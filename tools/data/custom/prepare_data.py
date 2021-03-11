@@ -1,9 +1,13 @@
-from os import walk
+import json
+from os import walk, makedirs
 from os.path import exists, join, basename
+from shutil import copyfile
 from collections import defaultdict
 from argparse import ArgumentParser
+from random import shuffle
 
 from lxml import etree
+from tqdm import tqdm
 
 
 NUM_CLASSES = 12
@@ -40,6 +44,7 @@ def load_annot(input_dir):
 
                 record['label'] = name_components[4]
                 record['user_id'] = name_components[3]
+                record['video_name'] = f
                 record['video_path'] = join(root, f)
 
         filtered_data = {k: v for k, v in local_data.items() if 'video_path' in v and 'annot' in v}
@@ -105,16 +110,43 @@ def parse_annot(xml_fragment):
         return tracks[0]
 
 
+def dump_annot(annot, out_path):
+    with open(out_path, 'w') as output_stream:
+        json.dump(annot, output_stream)
+
+
+def copy_videos(annot, out_dir):
+    for record in tqdm(annot, desc='Copying videos', leave=False):
+        input_file_path = record['video_path']
+        output_file_path = join(out_dir, record['video_name'])
+
+        if not exists(output_file_path):
+            copyfile(input_file_path, output_file_path)
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument('--input_dir', '-i', type=str, required=True)
-    # parser.add_argument('--output_dir', '-o', type=str, required=True)
+    parser.add_argument('--output_dir', '-o', type=str, required=True)
     args = parser.parse_args()
 
     assert exists(args.input_dir)
+    if not exists(args.output_dir):
+        makedirs(args.output_dir)
+
     data = load_annot(args.input_dir)
     user_ids = set([record['user_id'] for record in data.values()])
     print(f'Loaded {len(data)} records ({len(user_ids)} unique users).')
+
+    out_annot_path = join(args.output_dir, 'annot.json')
+    dump_annot(data, out_annot_path)
+    print(f'Annotation has been dumped to {out_annot_path}')
+
+    out_videos_dir = join(args.output_dir, 'videos')
+    if not exists(out_videos_dir):
+        makedirs(out_videos_dir)
+    copy_videos(data.values(), out_videos_dir)
+    print(f'Videos have been copied to {out_videos_dir}')
 
 
 if __name__ == '__main__':
