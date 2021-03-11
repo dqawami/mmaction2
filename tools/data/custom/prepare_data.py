@@ -4,7 +4,6 @@ from os.path import exists, join, basename
 from shutil import copyfile
 from collections import defaultdict
 from argparse import ArgumentParser
-from random import shuffle
 
 from lxml import etree
 from tqdm import tqdm
