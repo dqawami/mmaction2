@@ -134,7 +134,7 @@ train_pipeline = [
          input_size=input_img_size, scale_limits=(1, 0.875)),
     dict(type='Flip', flip_ratio=0.5),
     dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
-    # dict(type='BlockDropout', scale=0.2, prob=0.1),
+    dict(type='BlockDropout', scale=0.2, prob=0.1),
     dict(type='ProbCompose',
          transforms=[
              dict(type='Empty'),
