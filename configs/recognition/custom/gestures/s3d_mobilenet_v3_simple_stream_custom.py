@@ -1,8 +1,8 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'general',
-test_sources = 'general',
+train_sources = 'common_selfcreated',
+test_sources = 'common_selfcreated',
 
 root_dir = 'data'
 work_dir = None
@@ -29,16 +29,6 @@ model = dict(
         # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
-        # use_st_att=      (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
-        # attention_cfg=dict(
-        #     kernels=3,
-        #     add_temporal=False,
-        #     gumbel=True,
-        #     enable_loss=True,
-        #     gt_regression=True,
-        #     tv_loss=True,
-        #     reg_weight=0.1,
-        # ),
         use_temporal_avg_pool=True,
         input_bn=False,
         out_conv=True,
@@ -67,40 +57,10 @@ model = dict(
         spatial_size=1,
         dropout_ratio=None,
         in_channels=960,
-        embedding=True,
-        embd_size=256,
-        num_centers=1,
-        st_scale=10.0,
-        reg_weight=1.0,
-        reg_threshold=0.1,
+        embedding=False,
         loss_cls=dict(
-            type='AMSoftmaxLoss',
-            target_loss='sl',
-            scale_cfg=dict(
-                type='PolyScalarScheduler',
-                start_scale=30.0,
-                end_scale=5.0,
-                power=1.2,
-                num_epochs=40.0,
-            ),
-            pr_product=False,
-            margin_type='cos',
-            margin=0.35,
-            gamma=0.0,
-            t=1.0,
-            conf_penalty_weight=0.085,
-            filter_type='positives',
-            top_k=None,
-            enable_class_weighting=False,
-            enable_adaptive_margins=False,
-        ),
-        losses_extra=dict(
-            loss_lpush=dict(
-                type='LocalPushLoss',
-                margin=0.1,
-                weight=1.0,
-                smart_margin=True,
-            ),
+            type='CrossEntropyLoss',
+            loss_weight=1.0
         ),
     ),
 )
