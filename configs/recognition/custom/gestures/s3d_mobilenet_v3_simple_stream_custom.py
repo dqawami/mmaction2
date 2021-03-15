@@ -81,8 +81,12 @@ img_norm_cfg = dict(
     to_bgr=False
 )
 train_pipeline = [
-    dict(type='StreamSampleFrames', clip_len=input_clip_length, trg_fps=15, num_clips=2,
-         temporal_jitter=True, min_intersection=1.0),
+    dict(type='StreamSampleFrames',
+         clip_len=input_clip_length,
+         trg_fps=15,
+         num_clips=2,
+         temporal_jitter=True,
+         min_intersection=1.0),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
@@ -90,20 +94,22 @@ train_pipeline = [
          input_size=input_img_size, scale_limits=(1, 0.875)),
     dict(type='Flip', flip_ratio=0.5),
     dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
-    # dict(type='BlockDropout', scale=0.2, prob=0.1),
     dict(type='PhotometricDistortion',
          brightness_range=(65, 190),
          contrast_range=(0.6, 1.4),
          saturation_range=(0.7, 1.3),
          hue_delta=18),
-    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW', targets=['imgs']),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs', 'label', 'dataset_id'])
 ]
 val_pipeline = [
-    dict(type='StreamSampleFrames', clip_len=input_clip_length, trg_fps=15, num_clips=1, test_mode=True),
+    dict(type='StreamSampleFrames',
+         clip_len=input_clip_length,
+         trg_fps=15,
+         num_clips=1,
+         test_mode=True),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=input_img_size),
