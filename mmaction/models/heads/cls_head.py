@@ -34,6 +34,8 @@ class ClsHead(BaseHead):
                  reg_weight=1.0,
                  enable_class_mixing=False,
                  class_mixing_alpha=0.1,
+                 enable_bias=False,
+                 enable_bn=True,
                  **kwargs):
         super(ClsHead, self).__init__(**kwargs)
 
@@ -75,11 +77,13 @@ class ClsHead(BaseHead):
                 assert not enable_class_mixing, 'Re-balancing does not support embd mixing'
 
                 self.fc_pre_angular = nn.ModuleList([
-                    conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
+                    conv_1x1x1_bn(self.in_channels, self.embd_size,
+                                  as_list=False, bias=enable_bias, bn=enable_bn)
                     for _ in range(rebalance_num_groups)
                 ])
             else:
-                self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
+                self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size,
+                                                    as_list=False, bias=enable_bias, bn=enable_bn)
 
             if classification_layer == 'linear':
                 self.fc_angular = AngleMultipleLinear(self.embd_size, self.num_classes, num_centers,
@@ -94,7 +98,8 @@ class ClsHead(BaseHead):
             if self.enable_rebalance:
                 self.internal_num_channels = int(1.3 * self.in_channels)
                 self.fc_pre_cls = nn.ModuleList([
-                    conv_1x1x1_bn(self.in_channels, self.internal_num_channels, as_list=False)
+                    conv_1x1x1_bn(self.in_channels, self.internal_num_channels,
+                                  as_list=False, bias=enable_bias, bn=enable_bn)
                     for _ in range(rebalance_num_groups)
                 ])
                 self.fc_cls_out = nn.Linear(self.internal_num_channels, self.num_classes)

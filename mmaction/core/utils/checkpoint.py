@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from terminaltables import AsciiTable
 from mmcv.runner.checkpoint import _load_checkpoint
 from mmcv.runner.dist_utils import get_dist_info
@@ -41,6 +42,11 @@ def load_state_dict(module, in_state, class_maps=None, strict=False, logger=None
         src_shape = in_param.size()
         trg_shape = out_param.size()
         if src_shape != trg_shape:
+            if np.prod(src_shape) == np.prod(trg_shape):
+                out_param.copy_(in_param.view(trg_shape))
+                shape_casted_pairs.append([name, list(out_param.size()), list(in_param.size())])
+                continue
+
             is_valid = False
             if force_matching:
                 is_valid = len(src_shape) == len(trg_shape)
