@@ -205,7 +205,9 @@ optimizer = dict(
 optimizer_config = dict(
     grad_clip=dict(
         max_norm=40,
-        norm_type=2
+        norm_type=2,
+        # method='adaptive',
+        # clip=0.2,
     )
 )
 
