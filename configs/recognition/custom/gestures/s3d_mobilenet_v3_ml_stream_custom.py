@@ -107,8 +107,8 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=False, drop_p=0.33),
-    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
+    self_challenging=dict(enable=True, drop_p=0.33),
+    clip_mixing=dict(enable=False, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -124,7 +124,7 @@ train_pipeline = [
     dict(type='StreamSampleFrames',
          clip_len=input_clip_length,
          trg_fps=15,
-         num_clips=2,
+         num_clips=1,
          temporal_jitter=True,
          min_intersection=1.0),
     dict(type='RawFrameDecode'),
