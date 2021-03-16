@@ -108,7 +108,7 @@ model = dict(
 # model training and testing settings
 train_cfg = dict(
     self_challenging=dict(enable=False, drop_p=0.33),
-    clip_mixing=dict(enable=False, mode='logits', weight=0.2)
+    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -124,7 +124,7 @@ train_pipeline = [
     dict(type='StreamSampleFrames',
          clip_len=input_clip_length,
          trg_fps=15,
-         num_clips=1,
+         num_clips=2,
          temporal_jitter=True,
          min_intersection=1.0),
     dict(type='RawFrameDecode'),
@@ -134,7 +134,6 @@ train_pipeline = [
          input_size=input_img_size, scale_limits=(1, 0.875)),
     dict(type='Flip', flip_ratio=0.5),
     dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
-    # dict(type='BlockDropout', scale=0.2, prob=0.1),
     dict(type='ProbCompose',
          transforms=[
              dict(type='Empty'),
@@ -147,7 +146,6 @@ train_pipeline = [
                   mean_std_file='mean_std_list.txt'),
          ],
          probs=[0.1, 0.45, 0.45]),
-    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW', targets=['imgs']),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
