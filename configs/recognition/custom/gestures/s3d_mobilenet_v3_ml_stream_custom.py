@@ -134,7 +134,7 @@ train_pipeline = [
          input_size=input_img_size, scale_limits=(1, 0.875)),
     dict(type='Flip', flip_ratio=0.5),
     dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
-    dict(type='BlockDropout', scale=0.2, prob=0.1),
+    # dict(type='BlockDropout', scale=0.2, prob=0.1),
     dict(type='ProbCompose',
          transforms=[
              dict(type='Empty'),
@@ -147,7 +147,7 @@ train_pipeline = [
                   mean_std_file='mean_std_list.txt'),
          ],
          probs=[0.1, 0.45, 0.45]),
-    dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
+    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW', targets=['imgs']),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
