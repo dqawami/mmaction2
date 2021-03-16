@@ -218,13 +218,13 @@ params_config = dict(
 
 # learning policy
 lr_config = dict(
-    # policy='customcos',
-    # periods=[55],
-    # min_lr_ratio=1e-2,
-    # alpha=1.5,
-    policy='customstep',
-    step=[30, 50],
-    gamma=0.1,
+    policy='customcos',
+    periods=[55],
+    min_lr_ratio=1e-2,
+    alpha=1.5,
+    # policy='customstep',
+    # step=[30, 50],
+    # gamma=0.1,
     fixed='constant',
     fixed_epochs=5,
     fixed_ratio=10.0,
