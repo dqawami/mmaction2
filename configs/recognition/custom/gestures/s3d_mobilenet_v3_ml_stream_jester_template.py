@@ -1,12 +1,18 @@
 # global parameters
+num_videos_per_gpu = 12
+num_workers_per_gpu = 3
+train_sources = 'jester',
+test_sources = 'jester',
+
 root_dir = 'data'
 work_dir = None
 load_from = None
 resume_from = None
 
 # model settings
-input_clip_length = 8
+input_clip_length = 16
 input_img_size = 224
+input_frame_interval = 2
 reset_layer_prefixes = ['cls_head']
 reset_layer_suffixes = None
 
@@ -22,18 +28,8 @@ model = dict(
         width_mult=1.0,
         pool1_stride_t=1,
         # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
-        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
-        use_st_att=      (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
-        attention_cfg=dict(
-            kernels=3,
-            add_temporal=False,
-            gumbel=True,
-            enable_loss=True,
-            gt_regression=True,
-            tv_loss=True,
-            reg_weight=0.1,
-        ),
         use_temporal_avg_pool=True,
         input_bn=False,
         out_conv=True,
@@ -75,13 +71,13 @@ model = dict(
         class_mixing_alpha=0.2,
         loss_cls=dict(
             type='AMSoftmaxLoss',
-            target_loss='sl',
+            target_loss='ce',
             scale_cfg=dict(
                 type='PolyScalarScheduler',
                 start_scale=30.0,
                 end_scale=5.0,
                 power=1.2,
-                num_epochs=41.276,
+                num_epochs=40.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -94,21 +90,13 @@ model = dict(
             enable_class_weighting=False,
             enable_adaptive_margins=False,
         ),
-        losses_extra=dict(
-            loss_lpush=dict(
-                type='LocalPushLoss',
-                margin=0.1,
-                weight=1.0,
-                smart_margin=True,
-            ),
-        ),
     ),
 )
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=True, drop_p=0.33),
-    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
+    self_challenging=dict(enable=False, drop_p=0.33),
+    clip_mixing=dict(enable=False, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -124,24 +112,26 @@ train_pipeline = [
     dict(type='StreamSampleFrames',
          clip_len=input_clip_length,
          trg_fps=15,
-         num_clips=2,
+         num_clips=1,
          temporal_jitter=True,
          min_intersection=1.0),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
-    dict(type='RatioPreservingCrop',
-         input_size=input_img_size, scale_limits=(1, 0.875)),
+    dict(type='MultiScaleCrop',
+         input_size=input_img_size,
+         scales=(1, 0.875, 0.75, 0.66),
+         random_crop=False,
+         max_wh_scale_gap=1),
+    dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
-    dict(type='BlockDropout', scale=0.2, prob=0.1),
     dict(type='PhotometricDistortion',
          brightness_range=(65, 190),
          contrast_range=(0.6, 1.4),
          saturation_range=(0.7, 1.3),
          hue_delta=18),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCTHW', targets=['imgs']),
+    dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs', 'label', 'dataset_id'])
 ]
@@ -153,15 +143,15 @@ val_pipeline = [
          test_mode=True),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
-    dict(type='CenterCrop', crop_size=input_img_size),
+    dict(type='CenterCrop', crop_size=(input_img_size, input_img_size)),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs'])
 ]
 data = dict(
-    videos_per_gpu=14,
-    workers_per_gpu=2,
+    videos_per_gpu=num_videos_per_gpu,
+    workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
         drop_last=True
     ),
@@ -171,17 +161,17 @@ data = dict(
         filename_tmpl='{:05d}.jpg'
     ),
     train=dict(
-        source=['jester'],
+        source=train_sources,
         ann_file='train.txt',
         pipeline=train_pipeline,
     ),
     val=dict(
-        source=['jester'],
+        source=test_sources,
         ann_file='val.txt',
         pipeline=val_pipeline
     ),
     test=dict(
-        source=['jester'],
+        source=test_sources,
         ann_file='val.txt',
         pipeline=val_pipeline
     )
@@ -216,7 +206,7 @@ lr_config = dict(
     fixed='constant',
     fixed_epochs=5,
     fixed_ratio=10.0,
-    warmup='linear',
+    warmup='cos',
     warmup_epochs=5,
     warmup_ratio=1e-2,
 )
@@ -229,7 +219,7 @@ checkpoint_config = dict(
 )
 evaluation = dict(
     interval=1,
-    metrics=['mean_top_k_accuracy', 'ranking_mean_average_precision'],
+    metrics=['top_k_accuracy', 'mean_class_accuracy', 'ranking_mean_average_precision'],
     topk=(1, 5),
 )
 
