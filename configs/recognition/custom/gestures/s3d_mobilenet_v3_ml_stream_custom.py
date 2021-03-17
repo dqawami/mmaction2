@@ -219,7 +219,7 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[55],
+    periods=[70],
     min_lr_ratio=2.5e-3,
     alpha=1.5,
     # policy='customstep',
@@ -232,7 +232,7 @@ lr_config = dict(
     warmup_epochs=5,
     warmup_ratio=2.5e-3,
 )
-total_epochs = 65
+total_epochs = 80
 
 # workflow
 workflow = [('train', 1)]
