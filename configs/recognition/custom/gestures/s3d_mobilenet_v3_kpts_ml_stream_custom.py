@@ -1,41 +1,56 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'ucf101', 'hmdb51', 'activitynet200'
-test_sources = 'ucf101', 'hmdb51', 'activitynet200'
+train_sources = 'common_selfcreated',
+test_sources = 'common_selfcreated',
 
 root_dir = 'data'
 work_dir = None
 load_from = None
 resume_from = None
+
+# model settings
+input_clip_length = 8
+input_img_size = 224
 reset_layer_prefixes = ['cls_head']
 reset_layer_suffixes = None
 
-# model settings
-input_img_size = 224
-clip_len = 16
-frame_interval = 2
-
+# model definition
 model = dict(
     type='Recognizer3D',
     backbone=dict(
-        type='MobileNetV3_LGD',
+        type='MobileNetV3_S3D',
         num_input_layers=3,
         mode='large',
         pretrained=None,
         pretrained2d=False,
         width_mult=1.0,
         pool1_stride_t=1,
-        # block ids       0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
-        # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
-        temporal_strides=(1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
+        # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
+        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
-        use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-        mix_paths=       (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-        pool_method='attention',
-        channel_factor=3,
+        use_st_att=      (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
+        attention_cfg=dict(
+            kernels=3,
+            add_temporal=False,
+            gumbel=True,
+            enable_loss=True,
+            gt_regression=True,
+            tv_loss=True,
+            reg_weight=0.1,
+        ),
         use_temporal_avg_pool=True,
+        input_bn=False,
         out_conv=True,
+        out_attention=False,
+        weight_norm='none',
+        center_conv_weight=None,
+        dropout_cfg=dict(
+            dist='gaussian',
+            p=0.1,
+            mu=0.1,
+            sigma=0.03,
+        ),
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
@@ -47,23 +62,26 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=700,
+        num_classes=12,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
         in_channels=960,
         embedding=True,
         embd_size=256,
-        enable_rebalance=False,
-        rebalance_num_groups=3,
+        num_centers=1,
+        st_scale=10.0,
         reg_weight=1.0,
         reg_threshold=0.1,
         loss_cls=dict(
             type='AMSoftmaxLoss',
             target_loss='ce',
             scale_cfg=dict(
-                type='ConstantScalarScheduler',
-                scale=15.0,
+                type='PolyScalarScheduler',
+                start_scale=30.0,
+                end_scale=5.0,
+                power=1.2,
+                num_epochs=40.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -73,6 +91,8 @@ model = dict(
             conf_penalty_weight=0.085,
             filter_type='positives',
             top_k=None,
+            enable_class_weighting=False,
+            enable_adaptive_margins=False,
         ),
         losses_extra=dict(
             loss_lpush=dict(
@@ -87,9 +107,8 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=False, drop_p=0.33),
-    clip_mixing=dict(enable=False, mode='logits', weight=0.2),
-    loss_norm=dict(enable=False, gamma=0.9)
+    self_challenging=dict(enable=True, drop_p=0.33),
+    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -102,20 +121,22 @@ img_norm_cfg = dict(
     to_bgr=False
 )
 train_pipeline = [
-    dict(type='DecordInit'),
-    dict(type='SampleFrames',
-         clip_len=clip_len,
-         frame_interval=frame_interval,
-         num_clips=1,
-         temporal_jitter=True),
-    dict(type='DecordDecode'),
-    dict(type='Resize', scale=(-1, 256)),
-    dict(type='RandomRotate', delta=10, prob=0.5),
-    dict(type='RandomResizedCrop',
-         area_range=(0.4, 1.0),
-         aspect_ratio_range=(0.5, 1.5)),
-    dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
-    dict(type='Flip', flip_ratio=0.5),
+    dict(type='StreamSampleFrames',
+         clip_len=input_clip_length,
+         trg_fps=15,
+         num_clips=2,
+         temporal_jitter=True,
+         min_intersection=1.0),
+    dict(type='RawFrameDecode'),
+    dict(type='GenerateKptsMask', sigma_scale=0.1, out_name='attention_mask'),
+    dict(type='Resize', scale=(-1, 256),
+         targets=['imgs', 'attention_mask'], interpolation=['bilinear', 'nearest']),
+    dict(type='RandomRotate', delta=10, prob=0.5, targets=['imgs', 'attention_mask']),
+    dict(type='RatioPreservingCrop',
+         input_size=input_img_size, scale_limits=(1, 0.875),
+         targets=['imgs', 'attention_mask'], interpolation=['bilinear', 'nearest']),
+    dict(type='Flip', flip_ratio=0.5, targets=['imgs', 'attention_mask']),
+    dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
     dict(type='ProbCompose',
          transforms=[
              dict(type='Empty'),
@@ -128,26 +149,24 @@ train_pipeline = [
                   mean_std_file='mean_std_list.txt'),
          ],
          probs=[0.1, 0.45, 0.45]),
-    dict(type='CrossNorm', mean_std_file='mean_std_list.txt', prob=0.9),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCTHW'),
-    dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
-    dict(type='ToTensor', keys=['imgs', 'label', 'dataset_id'])
+    dict(type='FormatShape', input_format='NCTHW', targets=['imgs', 'attention_mask']),
+    dict(type='Collect', keys=['imgs', 'label', 'dataset_id', 'attention_mask'], meta_keys=[]),
+    dict(type='ToTensor', keys=['imgs', 'label', 'dataset_id', 'attention_mask'])
 ]
 val_pipeline = [
-    dict(type='DecordInit'),
-    dict(type='SampleFrames',
-         clip_len=clip_len,
-         frame_interval=frame_interval,
+    dict(type='StreamSampleFrames',
+         clip_len=input_clip_length,
+         trg_fps=15,
          num_clips=1,
          test_mode=True),
-    dict(type='DecordDecode'),
+    dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
-    dict(type='CenterCrop', crop_size=(input_img_size, input_img_size)),
+    dict(type='CenterCrop', crop_size=input_img_size),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
-    dict(type='Collect', keys=['imgs', 'dataset_id'], meta_keys=[]),
-    dict(type='ToTensor', keys=['imgs', 'dataset_id'])
+    dict(type='Collect', keys=['imgs'], meta_keys=[]),
+    dict(type='ToTensor', keys=['imgs'])
 ]
 data = dict(
     videos_per_gpu=num_videos_per_gpu,
@@ -156,13 +175,17 @@ data = dict(
         drop_last=True
     ),
     shared=dict(
-        type='VideoDataset',
-        data_subdir='videos',
+        type='StreamDataset',
+        data_subdir='global_crops',
+        filename_tmpl='{:05d}.jpg'
     ),
     train=dict(
         source=train_sources,
         ann_file='train.txt',
         pipeline=train_pipeline,
+        kpts_subdir='hand_kpts',
+        load_kpts=True,
+
     ),
     val=dict(
         source=test_sources,
@@ -179,12 +202,14 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=2e-3,
+    lr=4e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
 optimizer_config = dict(
     grad_clip=dict(
+        # max_norm=40,
+        # norm_type=2,
         method='adaptive',
         clip=0.2,
     )
@@ -200,17 +225,20 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[150],
-    min_lr_ratio=5e-3,
+    periods=[70],
+    min_lr_ratio=2.5e-3,
     alpha=1.5,
+    # policy='customstep',
+    # step=[30, 50],
+    # gamma=0.1,
     fixed='constant',
     fixed_epochs=5,
-    fixed_ratio=5.0,
-    warmup='cos',
+    fixed_ratio=2.5,
+    warmup='linear',
     warmup_epochs=5,
-    warmup_ratio=5e-3,
+    warmup_ratio=2.5e-3,
 )
-total_epochs = 160
+total_epochs = 80
 
 # workflow
 workflow = [('train', 1)]
