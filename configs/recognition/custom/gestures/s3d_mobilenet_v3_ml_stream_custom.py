@@ -75,7 +75,7 @@ model = dict(
         reg_threshold=0.1,
         loss_cls=dict(
             type='AMSoftmaxLoss',
-            target_loss='ce',
+            target_loss='sl',
             scale_cfg=dict(
                 type='PolyScalarScheduler',
                 start_scale=30.0,
@@ -202,8 +202,6 @@ optimizer = dict(
 )
 optimizer_config = dict(
     grad_clip=dict(
-        # max_norm=40,
-        # norm_type=2,
         method='adaptive',
         clip=0.2,
     )
@@ -219,12 +217,9 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[70],
+    periods=[55],
     min_lr_ratio=5e-3,
     alpha=1.5,
-    # policy='customstep',
-    # step=[30, 50],
-    # gamma=0.1,
     fixed='constant',
     fixed_epochs=5,
     fixed_ratio=5.0,
@@ -232,7 +227,7 @@ lr_config = dict(
     warmup_epochs=5,
     warmup_ratio=5e-3,
 )
-total_epochs = 80
+total_epochs = 65
 
 # workflow
 workflow = [('train', 1)]
