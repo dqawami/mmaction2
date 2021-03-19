@@ -81,7 +81,7 @@ model = dict(
             conf_penalty_weight=0.085,
             filter_type='positives',
             top_k=None,
-            enable_class_weighting=False,
+            enable_class_weighting=True,
             enable_adaptive_margins=False,
         ),
         losses_extra=dict(
