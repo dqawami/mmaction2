@@ -71,7 +71,7 @@ class BaseMetricLearningLoss(BaseWeightedLoss):
         average_weights = list()
         for _ in range(num_steps):
             ids = np.random.choice(class_ids, num_samples, p=frequencies)
-            values = class_ids[ids]
+            values = init_weights[ids]
             average_weights.append(np.mean(values))
 
         weights = scale / np.median(average_weights) * init_weights

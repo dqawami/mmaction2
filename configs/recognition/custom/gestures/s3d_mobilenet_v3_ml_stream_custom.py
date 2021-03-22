@@ -136,8 +136,6 @@ train_pipeline = [
                   mean_std_file='mean_std_list.txt'),
          ],
          probs=[0.1, 0.45, 0.45]),
-    dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train',
-         alpha=0.5, beta=10.0, prob=0.8),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW', targets=['imgs']),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
