@@ -4,7 +4,8 @@ from collections import defaultdict
 from mmcv.utils import print_log
 
 from ..core import (mean_class_accuracy, top_k_accuracy, mean_top_k_accuracy,
-                    mean_average_precision, ranking_mean_average_precision)
+                    mean_average_precision, ranking_mean_average_precision,
+                    invalid_pred_info, confusion_matrix)
 from .base import BaseDataset
 
 
@@ -14,7 +15,8 @@ class RecognitionDataset(BaseDataset, metaclass=ABCMeta):
 
     allowed_metrics = [
         'top_k_accuracy', 'mean_top_k_accuracy', 'mean_class_accuracy',
-        'mean_average_precision', 'ranking_mean_average_precision'
+        'mean_average_precision', 'ranking_mean_average_precision',
+        'confusion_matrix', 'invalid_info'
     ]
 
     def __init__(self, *args, **kwargs):
@@ -116,6 +118,21 @@ class RecognitionDataset(BaseDataset, metaclass=ABCMeta):
                 mAP = ranking_mean_average_precision(results, gt_labels)
                 eval_results[f'val/{name}/rank_mAP'] = mAP
                 log_msg = f'\n{name}/rank_mAP\t{mAP:.4f}'
+                print_log(log_msg, logger=logger)
+                continue
+
+            if metric == 'confusion_matrix':
+                cm = confusion_matrix(results, gt_labels)
+                eval_results[f'val/{name}/conf_matrix'] = cm
+                log_msg = f'\n{name}/conf_matrix evaluated'
+                print_log(log_msg, logger=logger)
+                continue
+
+            if metric == 'invalid_info':
+                invalid_ids, invalid_conf, invalid_pred = invalid_pred_info(results, gt_labels, k=1)
+                eval_results[f'val/{name}/invalid_info'] = \
+                    dict(ids=invalid_ids, conf=invalid_conf, pred=invalid_pred)
+                log_msg = f'\n{name}/invalid is collected'
                 print_log(log_msg, logger=logger)
                 continue
 

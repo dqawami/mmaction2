@@ -21,6 +21,7 @@ import mmcv
 from mmaction.datasets import build_dataloader, build_dataset
 from mmaction.utils import ExtendedDictAction
 from mmaction.core.utils import propagate_root_dir
+from mmcv.runner import set_random_seed
 
 
 def update_config(cfg, args):
@@ -107,6 +108,10 @@ def main(args):
         cfg.merge_from_dict(args.update_config)
     cfg = update_config(cfg, args)
     cfg = propagate_root_dir(cfg, args.data_dir)
+
+    if cfg.get('seed'):
+        print(f'Set random seed to {cfg.seed}')
+        set_random_seed(cfg.seed)
 
     # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))

@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 
 import mmcv
 import torch
@@ -25,6 +26,8 @@ def parse_args():
                         help='the dir with dataset')
     parser.add_argument('--out', default=None,
                         help='output result file in pickle format')
+    parser.add_argument('--out_invalid', default=None,
+                        help='output mismatched samples')
     parser.add_argument('--fuse_conv_bn', action='store_true',
                         help='Whether to fuse conv and bn, this will slightly increase the inference speed')
     parser.add_argument('--eval', type=str, nargs='+',
@@ -179,7 +182,48 @@ def main():
 
             print('\nFinal metrics:')
             for name, val in eval_res.items():
-                print(f'{name}: {val:.04f}')
+                if 'invalid_info' in name:
+                    continue
+
+                if isinstance(val, float):
+                    print(f'{name}: {val:.04f}')
+                elif isinstance(val, str):
+                    print(f'{name}:\n{val}')
+                else:
+                    print(f'{name}: {val}')
+
+            invalid_info = {name: val for name, val in eval_res.items() if 'invalid_info' in name}
+            if len(invalid_info) > 0:
+                assert args.out_invalid is not None and args.out_invalid != ''
+                if os.path.exists(args.out_invalid):
+                    shutil.rmtree(args.out_invalid)
+                if not os.path.exists(args.out_invalid):
+                    os.makedirs(args.out_invalid)
+
+                for name, invalid_record in invalid_info.items():
+                    out_invalid_dir = os.path.join(args.out_invalid, name)
+
+                    item_gen = zip(invalid_record['ids'], invalid_record['conf'], invalid_record['pred'])
+                    for invalid_idx, pred_conf, pred_label in item_gen:
+                        record_info = dataset.get_info(invalid_idx)
+                        gt_label = record_info['label']
+
+                        if 'filename' in record_info:
+                            src_data_path = record_info['filename']
+
+                            in_record_name, record_extension = os.path.basename(src_data_path).split('.')
+                            out_record_name = f'{in_record_name}_gt{gt_label}_pred{pred_label}_conf{pred_conf:.3f}'
+                            trg_data_path = os.path.join(out_invalid_dir, f'{out_record_name}.{record_extension}')
+
+                            shutil.copyfile(src_data_path, trg_data_path)
+                        else:
+                            src_data_path = record_info['frame_dir']
+
+                            in_record_name = os.path.basename(src_data_path)
+                            out_record_name = f'{in_record_name}_gt{gt_label}_pred{pred_label}_conf{pred_conf:.3f}'
+                            trg_data_path = os.path.join(out_invalid_dir, out_record_name)
+
+                            shutil.copytree(src_data_path, trg_data_path)
 
 
 if __name__ == '__main__':

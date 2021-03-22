@@ -314,6 +314,9 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         else:
             return self.prepare_train_frames(idx)
 
+    def get_info(self, idx):
+        return copy.deepcopy(self.records[idx])
+
     def num_classes(self):
         datasets = self._parse_data()
 
