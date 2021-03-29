@@ -137,7 +137,7 @@ def main():
     user_ids = set([record['user_id'] for record in data.values()])
     print(f'Loaded {len(data)} records ({len(user_ids)} unique users).')
 
-    out_annot_path = join(args.output_dir, 'annot.json')
+    out_annot_path = join(args.output_dir, 'videos_info.json')
     dump_annot(data, out_annot_path)
     print(f'Annotation has been dumped to {out_annot_path}')
 

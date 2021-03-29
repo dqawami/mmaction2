@@ -4,7 +4,7 @@ from os.path import exists, join, isfile, abspath
 from shutil import rmtree
 from argparse import ArgumentParser
 
-from joblib import delayed, Parallel
+from tqdm import tqdm
 
 
 VIDEO_EXTENSIONS = 'avi', 'mp4', 'mov', 'webm'
@@ -64,28 +64,28 @@ def prepare_tasks(relative_paths, input_dir, output_dir, extensions):
     return out_tasks
 
 
-def dump_frames(video_path, out_dir, image_name_template, max_image_size):
+def extract_properties(video_path):
     result = popen(
         f'ffprobe -hide_banner '
         f'-loglevel error '
         f'-select_streams v:0 '
-        f'-show_entries stream=width,height,r_frame_rate '
+        f'-show_entries stream=width,height '
         f'-of csv=p=0 {video_path}'
     )
-    video_width, video_height, video_fps = result.readline().rstrip().split(',')
 
+    video_width, video_height = result.readline().rstrip().split(',')
     video_width = int(video_width)
     video_height = int(video_height)
 
-    video_fps_parts = video_fps.split('/')
-    assert len(video_fps_parts) == 2
-    video_fps = float(video_fps_parts[0]) / float(video_fps_parts[1])
+    return dict(
+        width=video_width,
+        height=video_height
+    )
 
-    if video_width > video_height:
+
+def dump_frames(video_path, video_info, out_dir, image_name_template, max_image_size):
+    if video_info['width'] > video_info['height']:
         command = ['ffmpeg',
-                   '-hide_banner',
-                   '-threads', '1',
-                   '-loglevel', '"panic"',
                    '-i', '"{}"'.format(video_path),
                    '-vsync', '0',
                    '-vf', '"scale={}:-2"'.format(max_image_size),
@@ -94,9 +94,6 @@ def dump_frames(video_path, out_dir, image_name_template, max_image_size):
                    '-y']
     else:
         command = ['ffmpeg',
-                   '-hide_banner',
-                   '-threads', '1',
-                   '-loglevel', '"panic"',
                    '-i', '"{}"'.format(video_path),
                    '-vsync', '0',
                    '-vf', '"scale=-2:{}"'.format(max_image_size),
@@ -106,15 +103,53 @@ def dump_frames(video_path, out_dir, image_name_template, max_image_size):
     command = ' '.join(command)
 
     try:
-        _ = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
+        log = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
         return None
 
-    num_dumped_frames = len([True for f in listdir(out_dir) if isfile(join(out_dir, f))])
-    if num_dumped_frames == 0:
+    return str(log, 'utf-8')
+
+
+def parse_video_info(log_message):
+    all_entries = []
+    for line in log_message.split('\n'):
+        if line.startswith('frame='):
+            line = line.strip().split('\rframe=')[-1].strip()
+            line = ' '.join([el for el in line.split(' ') if el])
+            line = line.replace('= ', '=')
+            line_parts = line.split(' ')
+
+            num_frames = int(line_parts[0].split('=')[-1])
+            assert num_frames > 0
+
+            time_parts = [float(t) for t in line_parts[4].split('=')[-1].split(':')]
+            assert len(time_parts) == 3
+            duration = time_parts[0] * 3600.0 + time_parts[1] * 60.0 + time_parts[2]
+            assert duration > 0.0
+
+            frame_rate = num_frames / duration
+
+            all_entries.append((num_frames, frame_rate))
+
+    assert len(all_entries) > 0
+
+    return all_entries[-1]
+
+
+def process_task(input_video_path, output_video_dir, relative_path, image_name_template, max_image_size):
+    create_dirs(output_video_dir)
+
+    video_info = extract_properties(input_video_path)
+    log_message = dump_frames(input_video_path, video_info,
+                              output_video_dir, image_name_template,
+                              max_image_size)
+    if log_message is None:
+        rmtree(output_video_dir)
         return None
 
-    return num_dumped_frames, video_fps
+    video_num_frames, video_fps = parse_video_info(log_message)
+
+    return relative_path, video_num_frames, video_fps
 
 
 def dump_records(records, out_path):
@@ -131,21 +166,6 @@ def dump_records(records, out_path):
             output_stream.write(' '.join([str(r) for r in converted_record]) + '\n')
 
 
-def process_task(input_video_path, output_video_dir, relative_path, image_name_template, max_image_size):
-    create_dirs(output_video_dir)
-
-    out_info = dump_frames(
-        input_video_path, output_video_dir, image_name_template, max_image_size
-    )
-    if out_info is None:
-        rmtree(output_video_dir)
-        return None
-
-    video_num_frames, video_fps = out_info
-
-    return relative_path, video_num_frames, video_fps
-
-
 def main():
     parser = ArgumentParser()
     parser.add_argument('--input_dir', '-i', type=str, required=True)
@@ -153,13 +173,10 @@ def main():
     parser.add_argument('--out_extension', '-ie', type=str, required=False, default='jpg')
     parser.add_argument('--max_image_size', '-ms', type=int, required=False, default=720)
     parser.add_argument('--override', action='store_true', required=False)
-    parser.add_argument('--num_jobs', '-n', type=int, required=False, default=24)
     args = parser.parse_args()
 
     assert exists(args.input_dir)
     create_dirs(args.output_dir, override=args.override)
-
-    image_name_template = f'%05d.{args.out_extension}'
 
     print('\nPreparing tasks ...')
     relative_paths = parse_relative_paths(args.input_dir, VIDEO_EXTENSIONS)
@@ -167,10 +184,13 @@ def main():
     print(f'Prepared {len(tasks)} tasks.')
 
     print('\nDumping frames ...')
-    records = Parallel(n_jobs=args.num_jobs, verbose=True)(
-        delayed(process_task)(*task, image_name_template=image_name_template, max_image_size=args.max_image_size)
-        for task in tasks
-    )
+    image_name_template = f'%05d.{args.out_extension}'
+    records = []
+    for task in tqdm(tasks, leave=False):
+        record = process_task(*task,
+                              image_name_template=image_name_template,
+                              max_image_size=args.max_image_size)
+        records.append(record)
     print('Finished.')
 
     out_annot_path = abspath('{}/../annot.txt'.format(args.output_dir))
