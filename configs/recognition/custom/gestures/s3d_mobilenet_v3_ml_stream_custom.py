@@ -29,12 +29,14 @@ model = dict(
         # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
+        use_dropout=     (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1),
         use_temporal_avg_pool=True,
         input_bn=False,
         out_conv=True,
         out_attention=False,
         weight_norm='none',
         center_conv_weight=None,
+        internal_dropout=False,
         dropout_cfg=dict(
             # dist='gaussian',
             # p=0.1,
