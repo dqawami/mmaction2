@@ -36,10 +36,13 @@ model = dict(
         weight_norm='none',
         center_conv_weight=None,
         dropout_cfg=dict(
-            dist='gaussian',
-            p=0.1,
-            mu=0.1,
-            sigma=0.03,
+            # dist='gaussian',
+            # p=0.1,
+            # mu=0.1,
+            # sigma=0.03,
+            dist='focused_drop',
+            random_limits=(0.3, 0.6),
+            focused_prob=0.1,
         ),
     ),
     reducer=dict(
