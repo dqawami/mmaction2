@@ -201,8 +201,11 @@ lr_config = dict(
     policy='customstep',
     step=[5],
     gamma=0.1,
+    warmup='cos',
+    warmup_epochs=5,
+    warmup_ratio=1e-2,
 )
-total_epochs = 10
+total_epochs = 15
 
 # workflow
 workflow = [('train', 1)]

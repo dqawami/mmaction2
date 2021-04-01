@@ -43,8 +43,8 @@ model = dict(
             # mu=0.1,
             # sigma=0.03,
             dist='focused_drop',
-            random_limits=(0.3, 0.6),
-            focused_prob=0.1,
+            focused_drop_limits=(0.5, 0.7),
+            focused_prob=0.2,
         ),
     ),
     reducer=dict(
@@ -205,7 +205,7 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=0,
     open_layers=['cls_head']
 )
 

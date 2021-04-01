@@ -7,7 +7,7 @@ class Dropout(nn.Module):
     DISTRIBUTIONS = ['bernoulli', 'gaussian', 'info_drop', 'focused_drop']
 
     def __init__(self, p=0.5, mu=0.5, sigma=0.2, dist='bernoulli', kernel=3, temperature=0.05,
-                 random_limits=(0.3, 0.6), focused_prob=0.1):
+                 focused_drop_limits=(0.5, 0.8), focused_prob=0.2):
         super(Dropout, self).__init__()
 
         self.dist = dist
@@ -25,7 +25,7 @@ class Dropout(nn.Module):
         self.temperature = temperature
         assert self.temperature > 0.0
 
-        self.random_limits = random_limits
+        self.focused_drop_limits = focused_drop_limits
         self.focused_prob = focused_prob
 
     def forward(self, x, x_original=None):
@@ -45,7 +45,7 @@ class Dropout(nn.Module):
 
             out = info_dropout(x_original, self.kernel, x, self.p, self.temperature)
         elif self.dist == 'focused_drop':
-            out = focused_dropout(x, self.random_limits, self.focused_prob)
+            out = focused_dropout(x, self.focused_drop_limits, self.focused_prob)
         else:
             out = x
 
@@ -100,15 +100,19 @@ def info_dropout(in_features, kernel, out_features, drop_rate, temperature=0.05,
     return out
 
 
-def focused_dropout(x, random_limits=(0.3, 0.6), prob=0.1):
+def _get_batch_inds(ref_tensor):
+    return torch.arange(ref_tensor.size(0), device=ref_tensor.device)
+
+
+def focused_dropout(x, drop_limits=(0.5, 0.8), prob=0.2):
     """
     Implementation of thr paper: https://arxiv.org/abs/2103.15425
     """
 
-    assert isinstance(random_limits, (tuple, list))
-    assert len(random_limits) == 2
-    min_prob, max_prob = random_limits
-    assert 0 < min_prob < max_prob < 1
+    assert isinstance(drop_limits, (tuple, list))
+    assert len(drop_limits) == 2
+    min_drop_prob, max_drop_prob = drop_limits
+    assert 0.0 <= min_drop_prob < max_drop_prob < 1
 
     in_shape = x.size()
     assert len(in_shape) in (4, 5)
@@ -116,35 +120,36 @@ def focused_dropout(x, random_limits=(0.3, 0.6), prob=0.1):
     if len(in_shape) == 5:
         b, c, t, h, w = in_shape
         out_mask_shape = b, 1, t, h, w
-        x = x.permute(0, 2, 1, 3, 4)
-        b *= t
     else:
         b, c, h, w = in_shape
+        t = 1
         out_mask_shape = b, 1, h, w
-    participation_mask_shape = tuple([out_mask_shape[0]] + [1] * (len(out_mask_shape) - 1))
+    batch_mask_shape = tuple([out_mask_shape[0]] + [1] * (len(out_mask_shape) - 1))
 
-    x = x.reshape(-1, c, h, w)
+    y = x.reshape(-1, c, t * h * w)
 
     with torch.no_grad():
-        channel_weights = x.mean(dim=(2, 3))
-        ref_channel_ids = torch.argmax(channel_weights, dim=1)
+        channel_weights = y.mean(dim=2)
+        ref_channel_ind = torch.argmax(channel_weights, dim=1)
+        ref_channel = y[_get_batch_inds(ref_channel_ind), ref_channel_ind].view(-1, t, h * w)
 
-        batch_inds = torch.arange(ref_channel_ids.size(0), device=ref_channel_ids.device)
-        ref_channels = x[batch_inds, ref_channel_ids]
+        drop_norm_ratios = torch.rand((b, 1), device=ref_channel.device, dtype=ref_channel.dtype)
+        drop_ratios = (max_drop_prob - min_drop_prob) * drop_norm_ratios + min_drop_prob
+        drop_nums = ((h * w) * drop_ratios).long().repeat(1, t).view(-1)
 
-        ref_value = torch.max(ref_channels.view(-1, h * w), dim=1)[0].view(-1, 1, 1)
-        rand_values = torch.rand_like(ref_channels, device=ref_channels.device)
-        thresholds = ref_value * ((max_prob - min_prob) * rand_values + min_prob)
-        drop_mask = torch.where(ref_channels > thresholds,
-                                torch.ones_like(ref_channels),
-                                torch.zeros_like(ref_channels))
+        ref_values = torch.sort(ref_channel, dim=2)[0].view(-1, h * w)
+        thresholds = ref_values[_get_batch_inds(ref_values), drop_nums].view(-1, t, 1)
+        drop_mask = torch.where(ref_channel > thresholds,
+                                torch.ones_like(ref_channel),
+                                torch.zeros_like(ref_channel))
 
         drop_mask = drop_mask.view(out_mask_shape)
-        participation_mask = torch.rand(participation_mask_shape, device=drop_mask.device) > prob
-        out_mask = torch.where(participation_mask,
-                               torch.ones_like(drop_mask),
-                               drop_mask)
+        preserved_mask = torch.rand(batch_mask_shape, device=drop_mask.device) > prob
+        dropout_scale = 1.0 / (1.0 - 0.5 * (min_drop_prob + max_drop_prob))
+        out_scales = torch.where(preserved_mask,
+                                 torch.ones_like(drop_mask),
+                                 dropout_scale * drop_mask)
 
-    out = out_mask * x.view(in_shape)
+    out = out_scales * x
 
     return out
