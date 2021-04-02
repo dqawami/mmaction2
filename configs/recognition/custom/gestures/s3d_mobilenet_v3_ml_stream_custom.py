@@ -164,7 +164,8 @@ data = dict(
     videos_per_gpu=num_videos_per_gpu,
     workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
-        drop_last=True
+        drop_last=True,
+        enable_balancing=True,
     ),
     shared=dict(
         type='StreamDataset',
