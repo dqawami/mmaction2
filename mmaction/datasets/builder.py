@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from .dataset_wrappers import RepeatDataset
 from .registry import DATASETS
-from .samplers import DistributedSampler
+from .samplers import DistributedSampler, BalancedDistributedSampler
 
 if platform.system() != 'Windows':
     # https://github.com/pytorch/pytorch/issues/973
@@ -117,8 +117,8 @@ def build_dataloader(dataset,
     """
     rank, world_size = get_dist_info()
     if dist:
-        sampler = DistributedSampler(
-            dataset, world_size, rank, shuffle=shuffle)
+        # sampler = DistributedSampler(dataset, world_size, rank, shuffle=shuffle)
+        sampler = BalancedDistributedSampler(dataset, world_size, rank, shuffle=shuffle, num_instances=2)
         shuffle = False
         batch_size = videos_per_gpu
         num_workers = workers_per_gpu
@@ -127,9 +127,8 @@ def build_dataloader(dataset,
         batch_size = num_gpus * videos_per_gpu
         num_workers = num_gpus * workers_per_gpu
 
-    init_fn = partial(
-        worker_init_fn, num_workers=num_workers, rank=rank,
-        seed=seed) if seed is not None else None
+    init_fn = partial(worker_init_fn, num_workers=num_workers, rank=rank, seed=seed)\
+              if seed is not None else None
 
     data_loader = DataLoader(
         dataset,

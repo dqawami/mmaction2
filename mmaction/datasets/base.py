@@ -336,6 +336,23 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     def num_datasets(self):
         return len(self.dataset_ids_map)
 
+    @property
+    def clustered_ids(self):
+        all_ids = defaultdict(list)
+        for record_id, record in enumerate(self.records):
+            dataset_id = record['dataset_id']
+            all_ids[dataset_id].append((record_id, record['label']))
+
+        out_ids = {}
+        for dataset_id, dataset_items in all_ids.items():
+            clustered_dataset = defaultdict(list)
+            for record_id, label in dataset_items:
+                clustered_dataset[label].append(record_id)
+
+            out_ids[dataset_id] = clustered_dataset
+
+        return out_ids
+
     def update_meta_info(self, **kwargs):
         pass
 
