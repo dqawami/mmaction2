@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'MMAction2'
-copyright = '2020, OpenMMLab'
+copyright = '2020, OpenMMLab; 2020-2021, Intel'
 author = 'MMAction2 Authors'
 
 # The full version, including alpha/beta/rc tags

@@ -13,8 +13,9 @@
 [![Percentage of issues still open](https://isitmaintained.com/badge/open/open-mmlab/mmaction2.svg)](https://github.com/open-mmlab/mmaction2/issues)
 
 
-MMAction2 is an open-source toolbox for action understanding based on PyTorch.
-It is a part of the [OpenMMLab](http://openmmlab.org/) project.
+Intel MMAction2 is an open-source toolbox for action understanding based on PyTorch, this is a part of [OpenVINO Training Extensions](https://github.com/openvinotoolkit/training_extensions).
+
+Project is based on open-mmlab's [MMAction2](https://github.com/open-mmlab/mmaction2).
 
 The master branch works with **PyTorch 1.3+**.
 
