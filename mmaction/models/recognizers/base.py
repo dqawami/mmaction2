@@ -229,12 +229,6 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         imgs, attention_mask, head_args = self.reshape_input(imgs, attention_mask)
         losses = dict()
 
-        num_clips = imgs.size(0) // labels.size(0)
-        if num_clips > 1:
-            labels = labels.view(-1, 1).repeat(1, num_clips).view(-1)
-            if dataset_id is not None:
-                dataset_id = dataset_id.view(-1, 1).repeat(1, num_clips).view(-1)
-
         features = self._forward_module_train(
             self.backbone, imgs, losses,
             squeeze=True, attention_mask=attention_mask
@@ -253,7 +247,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         for head_id, cl_head in enumerate(heads):
             trg_mask = (dataset_id == head_id).view(-1) if dataset_id is not None else None
 
-            trg_labels = self._filter(labels, trg_mask)
+            trg_labels = self._filter(labels.view(-1), trg_mask)
             trg_num_samples = trg_labels.numel()
             if trg_num_samples == 0:
                 continue

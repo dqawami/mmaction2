@@ -599,6 +599,10 @@ class StreamSampleFrames(object):
         results['num_clips'] = self.num_clips
         results['clip_len'] = self.clip_len
 
+        if self.num_clips > 1:
+            results['label'] = [results['label']] * self.num_clips
+            results['dataset_id'] = [results['dataset_id']] * self.num_clips
+
         return results
 
     def __repr__(self):

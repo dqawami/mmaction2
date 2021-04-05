@@ -1653,8 +1653,12 @@ class MapFlippedLabels(object):
             local_labels_map = self.labels_map[dataset_name]
 
             old_label = results['label']
-            if old_label in local_labels_map:
-                results['label'] = local_labels_map[old_label]
+            if isinstance(old_label, (tuple, list)):
+                results['label'] = [local_labels_map[ol] if ol in local_labels_map else ol
+                                    for ol in old_label]
+            else:
+                if old_label in local_labels_map:
+                    results['label'] = local_labels_map[old_label]
 
         return results
 
