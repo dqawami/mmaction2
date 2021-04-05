@@ -469,9 +469,18 @@ class StreamSampleFrames(object):
         self.trg_fps = trg_fps
         self.num_clips = num_clips
         self.temporal_jitter = temporal_jitter
-        self.min_intersection = min_intersection
         self.ignore_outside = ignore_outside
         self.test_mode = test_mode
+
+        self.min_intersection = min_intersection
+        if isinstance(min_intersection, float):
+            self.min_static_intersect = min_intersection
+            self.min_dynamic_intersect = min_intersection
+        elif isinstance(min_intersection, dict):
+            self.min_static_intersect = float(min_intersection['static'])
+            self.min_dynamic_intersect = float(min_intersection['dynamic'])
+        else:
+            raise ValueError(f'Unknown format of min_intersection: {type(min_intersection)}')
 
     def _estimate_time_step(self, video_fps):
         return max(1, int(np.round(float(video_fps) / float(self.trg_fps))))
@@ -511,13 +520,21 @@ class StreamSampleFrames(object):
 
                 indices = np.concatenate((before_values, indices, after_values))
         else:
+            min_intersection_ratio = self.min_static_intersect\
+                if record['action_type'] == 'static'\
+                else self.min_dynamic_intersect
+            bumpy_length = int(np.round(float(1.0 - min_intersection_ratio) * float(input_length)))
+
             if record['clip_len'] < input_length:
-                bumpy_num_frames = int(float(1.0 - self.min_intersection) * float(record['clip_len']))
-                shift_start = max(record['video_start'], record['clip_end'] - bumpy_num_frames - input_length)
-                shift_end = min(record['video_end'] - input_length + 1, record['clip_start'] + bumpy_num_frames + 1)
+                shift_start = max(record['video_start'],
+                                  record['clip_end'] - bumpy_length - input_length)
+                shift_end = min(record['video_end'] - input_length + 1,
+                                record['clip_start'] + bumpy_length + 1)
             else:
-                shift_start = record['clip_start']
-                shift_end = record['clip_end'] - input_length + 1
+                shift_start = max(record['video_start'],
+                                  record['clip_start'] - bumpy_length)
+                shift_end = min(record['video_end'] - input_length + 1,
+                                record['clip_end'] + bumpy_length - input_length + 1)
 
             if self.temporal_jitter:
                 offsets = np.random.randint(low=0, high=time_step, size=output_length, dtype=np.int32)
@@ -527,7 +544,7 @@ class StreamSampleFrames(object):
             start_pos = np.random.randint(low=shift_start, high=shift_end)
             indices = np.array([start_pos + i * time_step + offsets[i] for i in range(output_length)])
 
-        return indices
+        return indices, True
 
     def _get_test_indices(self, record, time_step, input_length, output_length):
         if record['video_len'] < input_length:
@@ -552,7 +569,7 @@ class StreamSampleFrames(object):
 
             indices = np.array([start_pos + i * time_step for i in range(output_length)])
 
-        return indices
+        return indices, True
 
     def __call__(self, results):
         """Perform the StreamSampleFrames loading.
@@ -568,7 +585,10 @@ class StreamSampleFrames(object):
         start_index = results['start_index']
         all_frame_inds = []
         for clip_id in range(self.num_clips):
-            frame_inds = self._generate_indices(results, frame_interval, input_length, output_length)
+            frame_inds, is_positive = self._generate_indices(
+                results, frame_interval, input_length, output_length
+            )
+
             frame_inds = np.array(frame_inds).astype(np.int)
             frame_inds = np.where(frame_inds < 0, frame_inds, frame_inds + start_index)
             all_frame_inds.append(frame_inds)

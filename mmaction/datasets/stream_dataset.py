@@ -50,6 +50,7 @@ class StreamDataset(RecognitionDataset):
                  pipeline,
                  kpts_subdir=None,
                  load_kpts=False,
+                 action_type_file=None,
                  test_mode=False,
                  filename_tmpl='img_{:05}.jpg',
                  multi_class=False,
@@ -64,6 +65,35 @@ class StreamDataset(RecognitionDataset):
         super().__init__(source, root_dir, ann_file, data_subdir, pipeline,
                          kpts_subdir, load_kpts, test_mode,
                          multi_class, num_classes, start_index, modality, logger)
+
+        if action_type_file is not None:
+            assert isinstance(action_type_file, dict)
+            assert len(self.dataset_ids_map) == 1
+
+            source_name = self.dataset_ids_map[0]
+            if source_name in action_type_file:
+                action_type_file = osp.join(self.root_dir, action_type_file[source_name])
+                self.records = self._update_action_type_info(self.records, action_type_file)
+
+    @staticmethod
+    def _update_action_type_info(records, action_type_file):
+        if not osp.exists(action_type_file):
+            return records
+
+        action_type_map = dict()
+        with open(action_type_file) as input_stream:
+            for line in input_stream:
+                line_parts = line.strip().split(':')
+                if len(line_parts) != 2:
+                    continue
+
+                action_type_map[int(line_parts[0])] = line_parts[1]
+
+        for record in records:
+            label = record['label']
+            record['action_type'] = action_type_map[label]
+
+        return records
 
     def _load_annotations(self, ann_file, data_prefix=None):
         """Load annotation file to get video information."""
@@ -86,6 +116,7 @@ class StreamDataset(RecognitionDataset):
                     'video_end': int(line_split[5]),
                     'fps': float(line_split[6]),
                     'filename_tmpl': self.filename_tmpl,
+                    'action_type': 'dynamic',
                 }
 
                 video_info['clip_len'] = video_info['clip_end'] - video_info['clip_start']

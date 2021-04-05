@@ -62,16 +62,17 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
 
         assert isinstance(source, str)
         self.dataset_ids_map = {0: source}
+        self.root_dir = osp.join(root_dir, source)
 
-        ann_file = osp.join(root_dir, source, ann_file)
+        ann_file = osp.join(self.root_dir, ann_file)
         assert osp.exists(ann_file), f'Annotation file does not exist: {ann_file}'
 
-        data_prefix = osp.join(root_dir, source, data_subdir)
+        data_prefix = osp.join(self.root_dir, data_subdir)
         assert osp.exists(data_prefix), f'Data root dir does not exist: {data_prefix}'
 
         kpts_prefix = None
         if kpts_subdir is not None and load_kpts:
-            kpts_prefix = osp.join(root_dir, source, kpts_subdir)
+            kpts_prefix = osp.join(self.root_dir, kpts_subdir)
             assert osp.exists(kpts_prefix), f'Kpts root dir does not exist: {kpts_prefix}'
 
         self.test_mode = test_mode

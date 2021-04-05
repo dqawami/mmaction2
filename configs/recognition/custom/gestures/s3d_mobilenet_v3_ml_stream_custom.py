@@ -121,14 +121,14 @@ train_pipeline = [
          trg_fps=15,
          num_clips=2,
          temporal_jitter=True,
-         min_intersection=1.0),
+         min_intersection=dict(static=0.6, dynamic=1.0)),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
     dict(type='RatioPreservingCrop',
          input_size=input_img_size, scale_limits=(1, 0.875)),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
+    dict(type='MapFlippedLabels', map_file=dict(common_selfcreated='flip_labels_map.txt')),
     dict(type='ProbCompose',
          transforms=[
              dict(type='Empty'),
@@ -175,6 +175,7 @@ data = dict(
     train=dict(
         source=train_sources,
         ann_file='train.txt',
+        action_type_file=dict(common_selfcreated='action_type_classes.txt'),
         pipeline=train_pipeline,
     ),
     val=dict(
