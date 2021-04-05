@@ -95,6 +95,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             self.clip_mixing_loss = builder.build_loss(dict(
                 type='ClipMixingLoss',
                 mode=train_cfg.clip_mixing.mode,
+                num_clips=train_cfg.clip_mixing.num_clips,
                 loss_weight=train_cfg.clip_mixing.weight
             ))
 
@@ -302,7 +303,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             # clip mixing loss
             if self.with_clip_mixing:
                 losses['loss/clip_mix' + str(head_id)] = self.clip_mixing_loss(
-                    trg_main_scores, trg_norm_embd, num_clips, cl_head.last_scale
+                    trg_main_scores, trg_norm_embd, cl_head.last_scale
                 )
 
             if self.with_sample_filtering:

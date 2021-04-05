@@ -15,6 +15,10 @@ input_img_size = 224
 reset_layer_prefixes = ['cls_head']
 reset_layer_suffixes = None
 
+# training settings
+enable_mutual_learning = True
+num_train_clips = 2 if enable_mutual_learning else 1
+
 # model definition
 model = dict(
     type='Recognizer3D',
@@ -102,8 +106,12 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=True, drop_p=0.33),
-    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
+    self_challenging=dict(enable=True,
+                          drop_p=0.33),
+    clip_mixing=dict(enable=enable_mutual_learning,
+                     mode='logits',
+                     num_clips=num_train_clips,
+                     weight=0.2),
 )
 test_cfg = dict(
     average_clips=None
@@ -119,7 +127,7 @@ train_pipeline = [
     dict(type='StreamSampleFrames',
          clip_len=input_clip_length,
          trg_fps=15,
-         num_clips=2,
+         num_clips=num_train_clips,
          temporal_jitter=True,
          min_intersection=dict(static=0.6, dynamic=1.0)),
     dict(type='RawFrameDecode'),
