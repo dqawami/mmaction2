@@ -1361,8 +1361,41 @@ class LoadProposals(object):
 
 
 @PIPELINES.register_module()
+class LoadKpts(object):
+    """Loads key-points.
+    """
+
+    def __init__(self, out_name='kpts'):
+        self.out_name = out_name
+
+    @staticmethod
+    def _load_kpts(filepath):
+        with open(filepath) as kpts_stream:
+            raw_kpts = mmcv.load(kpts_stream, file_format='json')
+
+        kpts = dict()
+        for kpt_id, frame_data in raw_kpts.items():
+            kpts[int(kpt_id)] = {int(frame_id): kpt for frame_id, kpt in frame_data.items()}
+
+        return kpts
+
+    def __call__(self, results):
+        assert 'kpts_file' in results
+        assert osp.exists(results['kpts_file'])
+
+        results[self.out_name] = self._load_kpts(results['kpts_file'])
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__} (' \
+                   f'out_name={self.out_name})'
+        return repr_str
+
+
+@PIPELINES.register_module()
 class GenerateKptsMask(object):
-    """Generate key-point masks.
+    """Generates key-point masks.
     """
 
     def __init__(self, sigma_scale=0.1, out_name='attention_mask'):

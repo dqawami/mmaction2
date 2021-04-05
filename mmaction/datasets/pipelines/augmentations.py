@@ -445,11 +445,15 @@ class MultiScaleCrop(object):
 
 @PIPELINES.register_module()
 class RatioPreservingCrop(object):
-    def __init__(self, input_size, scale_limits=(1.0, 0.8), targets=None, interpolation='bilinear'):
+    def __init__(self, input_size, scale_limits=(1.0, 0.8), targets=None, interpolation='bilinear',
+                 use_kpts=False, sigma_scale=0.1):
         assert isinstance(scale_limits, (tuple, list))
         assert len(scale_limits) == 2
         self.scale_limits = float(min(scale_limits)), float(max(scale_limits))
         assert 0.0 < self.scale_limits[0] < self.scale_limits[1] <= 1.0
+        self.use_kpts = use_kpts
+        self.sigma_scale = float(sigma_scale)
+        assert self.sigma_scale > 0.0
 
         self.input_size = input_size if not isinstance(input_size, int) else [input_size, input_size]
         self.output_size = self.input_size[1], self.input_size[0]
@@ -472,7 +476,33 @@ class RatioPreservingCrop(object):
             self.interpolation = [self.interpolation] * len(self.targets)
 
     @staticmethod
-    def _sample_crop_bbox(scale_limits, image_size, trg_size):
+    def _estimate_object_bbox(kpts, frame_idx, img_size, sigma_scale):
+        valid_kpts = []
+        for kpt_data in kpts.values():
+            for frame_id in frame_idx:
+                if frame_id in kpt_data:
+                    valid_kpts.append([float(value) for value in kpt_data[frame_id][:2]])
+
+        if len(valid_kpts) == 0:
+            return None
+
+        image_h, image_w = img_size[0], img_size[1]
+        sigma = (sigma_scale * np.sqrt(image_h ** 2 + image_w ** 2))
+
+        valid_kpts = np.array(valid_kpts, dtype=np.float32).reshape([-1, 2])
+        x_min = (valid_kpts[:, 0] - 3 * sigma).clip_max(0.0).min()
+        y_min = (valid_kpts[:, 1] - 3 * sigma).clip_max(0.0).min()
+        x_max = (valid_kpts[:, 0] + 3 * sigma).clip_min(image_w).max()
+        y_max = (valid_kpts[:, 1] + 3 * sigma).clip_min(image_h).max()
+
+        object_bbox = None
+        if x_min < x_max and y_min < y_max:
+            object_bbox = x_min, y_min, x_max, y_max
+
+        return object_bbox
+
+    @staticmethod
+    def _sample_crop_bbox(scale_limits, image_size, trg_size, object_bbox=None):
         image_h, image_w = image_size[0], image_size[1]
 
         scale = np.random.uniform(low=scale_limits[0], high=scale_limits[1])
@@ -489,8 +519,21 @@ class RatioPreservingCrop(object):
         crop_w = min(image_w, int(crop_w))
         crop_h = min(image_h, int(crop_h))
 
-        w_offset = random.randint(0, image_w - crop_w) if crop_w < image_w else 0
-        h_offset = random.randint(0, image_h - crop_h) if crop_h < image_h else 0
+        if object_bbox is not None:
+            obj_x_min, obj_y_min, obj_x_max, obj_y_max = object_bbox
+
+            w_offset = 0
+            if crop_w < image_w:
+                w_offset = random.randint(max(0, obj_x_max - crop_w),
+                                          min(obj_x_min, image_w - crop_w))
+
+            h_offset = 0
+            if crop_h < image_h:
+                h_offset = random.randint(max(0, obj_y_max - crop_h),
+                                          min(obj_y_min, image_h - crop_h))
+        else:
+            w_offset = random.randint(0, image_w - crop_w) if crop_w < image_w else 0
+            h_offset = random.randint(0, image_h - crop_h) if crop_h < image_h else 0
 
         return crop_w, crop_h, w_offset, h_offset
 
@@ -501,10 +544,15 @@ class RatioPreservingCrop(object):
 
         img_size = img_data[0].shape[:2]
 
+        object_bbox = None
+        if self.use_kpts and 'kpts' in results:
+            frame_inds = results['frame_inds'].flatten()
+            object_bbox = self._estimate_object_bbox(results['kpts'], frame_inds, img_size, self.sigma_scale)
+
         rand_boxes = []
         for clip_id in range(num_clips):
             crop_w, crop_h, offset_w, offset_h = self._sample_crop_bbox(
-                self.scale_limits, img_size, self.input_size
+                self.scale_limits, img_size, self.input_size, object_bbox
             )
             rand_boxes.append(np.array([offset_w, offset_h, offset_w + crop_w - 1, offset_h + crop_h - 1]))
 
@@ -525,7 +573,9 @@ class RatioPreservingCrop(object):
 
     def __repr__(self):
         repr_str = (f'{self.__class__.__name__}('
-                    f'input_size={self.input_size}, scale_limits={self.scale_limits})')
+                    f'input_size={self.input_size}, '
+                    f'scale_limits={self.scale_limits}, '
+                    f'use_kpts={self.use_kpts})')
         return repr_str
 
 
