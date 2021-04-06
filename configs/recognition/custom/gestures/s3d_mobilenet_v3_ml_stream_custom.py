@@ -130,7 +130,7 @@ train_pipeline = [
          num_clips=num_train_clips,
          temporal_jitter=True,
          min_intersection=dict(static=1.0, dynamic=1.0),
-         neg_prob=-1),
+         neg_prob=0.3),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
