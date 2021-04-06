@@ -1,4 +1,4 @@
-Intel MMAction2 Third Party Programs File
+OpenVINO™ Training Extensions MMAction2 Third Party Programs File
 
 This file contains the list of third party software ("third party programs")
 contained in the Intel software and their required notices and/or license
