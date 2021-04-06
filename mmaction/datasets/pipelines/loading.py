@@ -461,7 +461,8 @@ class StreamSampleFrames(object):
                  trg_fps=15.0,
                  num_clips=1,
                  temporal_jitter=False,
-                 min_intersection=0.6,
+                 min_intersection=1.0,
+                 neg_prob=-1,
                  ignore_outside=False,
                  test_mode=False):
 
@@ -471,6 +472,9 @@ class StreamSampleFrames(object):
         self.temporal_jitter = temporal_jitter
         self.ignore_outside = ignore_outside
         self.test_mode = test_mode
+
+        self.enable_negatives = neg_prob is not None and neg_prob > 0
+        self.neg_prob = float(neg_prob) if self.enable_negatives else None
 
         self.min_intersection = min_intersection
         if isinstance(min_intersection, float):
@@ -519,22 +523,45 @@ class StreamSampleFrames(object):
                 after_values = np.full(num_after, after_fill_value, dtype=np.int32)
 
                 indices = np.concatenate((before_values, indices, after_values))
-        else:
-            min_intersection_ratio = self.min_static_intersect\
-                if record['action_type'] == 'static'\
-                else self.min_dynamic_intersect
-            bumpy_length = int(np.round(float(1.0 - min_intersection_ratio) * float(input_length)))
 
-            if record['clip_len'] < input_length:
-                shift_start = max(record['video_start'],
-                                  record['clip_end'] - bumpy_length - input_length)
-                shift_end = min(record['video_end'] - input_length + 1,
-                                record['clip_start'] + bumpy_length + 1)
+            neg_label = False
+        else:
+            min_intersection_ratio = self.min_static_intersect \
+                if record['action_type'] == 'static' \
+                else self.min_dynamic_intersect
+            bumpy_length = int(np.round(float(1.0 - min_intersection_ratio) *
+                                        float(min(input_length, record['clip_len']))))
+
+            valid_neg_segments = []
+
+            neg_before_start = record['video_start']
+            neg_before_end = record['clip_start'] + bumpy_length + 1
+            neg_before_length = neg_before_end - neg_before_start
+            if neg_before_length >= input_length:
+                valid_neg_segments.append((neg_before_start, neg_before_end))
+
+            neg_after_start = record['clip_end'] - bumpy_length
+            neg_after_end = record['video_end']
+            neg_after_length = neg_after_end - neg_after_start
+            if neg_after_length >= input_length:
+                valid_neg_segments.append((neg_after_start, neg_after_end))
+
+            neg_label = self.enable_negatives and len(valid_neg_segments) > 0 and np.random.rand() < self.neg_prob
+            if neg_label:
+                neg_segment_start, neg_segment_end = valid_neg_segments[np.random.randint(len(valid_neg_segments))]
+                shift_start = neg_segment_start
+                shift_end = neg_segment_end - input_length
             else:
-                shift_start = max(record['video_start'],
-                                  record['clip_start'] - bumpy_length)
-                shift_end = min(record['video_end'] - input_length + 1,
-                                record['clip_end'] + bumpy_length - input_length + 1)
+                if record['clip_len'] < input_length:
+                    shift_start = max(record['video_start'],
+                                      record['clip_end'] - bumpy_length - input_length)
+                    shift_end = min(record['video_end'] - input_length + 1,
+                                    record['clip_start'] + bumpy_length + 1)
+                else:
+                    shift_start = max(record['video_start'],
+                                      record['clip_start'] - bumpy_length)
+                    shift_end = min(record['video_end'] - input_length + 1,
+                                    record['clip_end'] + bumpy_length - input_length + 1)
 
             if self.temporal_jitter:
                 offsets = np.random.randint(low=0, high=time_step, size=output_length, dtype=np.int32)
@@ -544,7 +571,7 @@ class StreamSampleFrames(object):
             start_pos = np.random.randint(low=shift_start, high=shift_end)
             indices = np.array([start_pos + i * time_step + offsets[i] for i in range(output_length)])
 
-        return indices, True
+        return indices, not neg_label
 
     def _get_test_indices(self, record, time_step, input_length, output_length):
         if record['video_len'] < input_length:
@@ -583,7 +610,7 @@ class StreamSampleFrames(object):
         input_length, output_length = self._estimate_clip_lengths(frame_interval)
 
         start_index = results['start_index']
-        all_frame_inds = []
+        all_frame_inds, all_labels, all_dataset_ids = [], [], []
         for clip_id in range(self.num_clips):
             frame_inds, is_positive = self._generate_indices(
                 results, frame_interval, input_length, output_length
@@ -593,23 +620,27 @@ class StreamSampleFrames(object):
             frame_inds = np.where(frame_inds < 0, frame_inds, frame_inds + start_index)
             all_frame_inds.append(frame_inds)
 
-        frame_inds = np.concatenate(all_frame_inds)
+            all_labels.append(results['label'] if is_positive else -1)
+            all_dataset_ids.append(results['dataset_id'])
 
-        results['frame_inds'] = frame_inds
+        results['frame_inds'] = np.concatenate(all_frame_inds)
         results['num_clips'] = self.num_clips
         results['clip_len'] = self.clip_len
-
-        if self.num_clips > 1:
-            results['label'] = [results['label']] * self.num_clips
-            results['dataset_id'] = [results['dataset_id']] * self.num_clips
+        results['label'] = all_labels if self.num_clips > 1 else all_labels[0]
+        results['dataset_id'] = all_dataset_ids if self.num_clips > 1 else all_dataset_ids[0]
 
         return results
 
     def __repr__(self):
-        repr_str = f'{self.__class__.__name__}(clip_len={self.clip_len}, ' \
+        repr_str = f'{self.__class__.__name__}(' \
+                   f'clip_len={self.clip_len}, ' \
                    f'trg_fps={self.trg_fps}, ' \
                    f'num_clips={self.num_clips}, ' \
-                   f'min_intersection={self.min_intersection})'
+                   f'temporal_jitter={self.temporal_jitter}, ' \
+                   f'min_intersection={self.min_intersection}, ' \
+                   f'neg_prob={self.neg_prob}, ' \
+                   f'ignore_outside={self.ignore_outside}, ' \
+                   f'test_mode={self.test_mode})'
         return repr_str
 
 
