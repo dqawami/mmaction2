@@ -105,7 +105,7 @@ def dump_annot(records, out_path):
             clip_start = record['clip_start']
             clip_end = record['clip_end']
 
-            output_stream.write(f'{name} {label} {video_start} {video_end} {clip_start} {clip_end} {fps}\n')
+            output_stream.write(f'{name} {label} {clip_start} {clip_end} {video_start} {video_end} {fps}\n')
 
 
 def main():

@@ -20,8 +20,12 @@ def rsc(features, scores, labels, retain_p=0.77):
        Based on the paper: https://arxiv.org/abs/2007.02454
     """
 
-    batch_range = torch.arange(scores.size(0), device=scores.device)
-    gt_scores = scores[batch_range, labels.view(-1)]
+    pos_samples_mask = labels.view(-1) >= 0
+    pos_labels = labels.view(-1)[pos_samples_mask]
+    pos_scores = scores[pos_samples_mask]
+
+    batch_range = torch.arange(pos_scores.size(0), device=pos_scores.device)
+    gt_scores = pos_scores[batch_range, pos_labels.view(-1)]
     z_grads = grad(outputs=gt_scores,
                    inputs=features,
                    grad_outputs=torch.ones_like(gt_scores),

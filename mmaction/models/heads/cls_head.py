@@ -246,6 +246,10 @@ class ClsHead(BaseHead):
                 norm_embd = normalize(unnorm_embd.view(-1, self.embd_size), dim=1)
 
                 if self.training:
+                    neg_samples_mask = labels.view(-1) < 0
+                    if neg_samples_mask.sum() > 0 and (self.enable_class_mixing or self.enable_sampling):
+                        raise NotImplementedError
+
                     if self.enable_class_mixing:
                         norm_class_centers = normalize(self.fc_angular.weight.permute(1, 0), dim=1)
                         norm_embd = self._mix_embd(
@@ -281,11 +285,18 @@ class ClsHead(BaseHead):
     def loss(self, main_cls_score, labels, norm_embd, name, extra_cls_score, **kwargs):
         losses = dict()
 
-        main_cls_loss = self.head_loss(main_cls_score, labels)
+        pos_samples_mask = labels.view(-1) >= 0
+        pos_labels = labels.view(-1)[pos_samples_mask]
+        pos_main_cls_score = main_cls_score[pos_samples_mask]
+
+        main_cls_loss = self.head_loss(pos_main_cls_score, pos_labels)
         if hasattr(self.head_loss, 'last_scale'):
             losses['scale/cls' + name] = self.head_loss.last_scale
 
         if self.enable_rebalance:
+            if pos_main_cls_score.size(0) < main_cls_score.size(0):
+                raise NotImplementedError('Negative mining is not implemented for thr rebalance loss')
+
             with torch.no_grad():
                 all_indexed_labels_mask = torch.zeros_like(main_cls_score, dtype=torch.float32)\
                     .scatter_(1, labels.view(-1, 1), 1)

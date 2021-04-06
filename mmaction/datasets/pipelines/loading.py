@@ -550,7 +550,7 @@ class StreamSampleFrames(object):
             if neg_label:
                 neg_segment_start, neg_segment_end = valid_neg_segments[np.random.randint(len(valid_neg_segments))]
                 shift_start = neg_segment_start
-                shift_end = neg_segment_end - input_length
+                shift_end = neg_segment_end - input_length + 1
             else:
                 if record['clip_len'] < input_length:
                     shift_start = max(record['video_start'],
