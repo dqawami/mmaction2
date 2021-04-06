@@ -9,16 +9,25 @@ from random import shuffle
 CLASS_MAP = {
     'digit_0': 0,
     'digit_1': 1,
+    'digit_1_hand_to_the_camera': 1,
     'digit_2': 2,
+    'digit_2_hand_to_the_camera': 2,
     'digit_3': 3,
+    'digit_3_hand_to_the_camera': 3,
+    'digit_3_middle_fingers': 3,
+    'digit_3_middle_fingers_hand_to_the_camera': 3,
+    'digit_3_with_big_finger': 3,
+    'digit_3_with_big_finger_hand_to_the_camera': 3,
     'digit_4': 4,
+    'digit_4_hand_to_the_camera': 4,
     'digit_5': 5,
+    'digit_5_hand_to_the_camera': 5,
     'thumb_up': 6,
     'thumb_down': 7,
     'sliding_two_fingers_up': 8,
     'sliding_two_fingers_down': 9,
     'sliding_two_fingers_left': 10,
-    'sliding_two_fingers_right': 11
+    'sliding_two_fingers_right': 11,
 }
 
 
