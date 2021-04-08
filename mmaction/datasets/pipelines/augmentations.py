@@ -490,10 +490,10 @@ class RatioPreservingCrop(object):
         sigma = (sigma_scale * np.sqrt(image_h ** 2 + image_w ** 2))
 
         valid_kpts = np.array(valid_kpts, dtype=np.float32).reshape([-1, 2])
-        x_min = (valid_kpts[:, 0] - 3 * sigma).clip_max(0.0).min()
-        y_min = (valid_kpts[:, 1] - 3 * sigma).clip_max(0.0).min()
-        x_max = (valid_kpts[:, 0] + 3 * sigma).clip_min(image_w).max()
-        y_max = (valid_kpts[:, 1] + 3 * sigma).clip_min(image_h).max()
+        x_min = int(np.round(np.maximum(0.0, valid_kpts[:, 0] - 3 * sigma).min()))
+        y_min = int(np.round(np.maximum(0.0, valid_kpts[:, 1] - 3 * sigma).min()))
+        x_max = int(np.round(np.minimum(image_w, valid_kpts[:, 0] + 3 * sigma).max()))
+        y_max = int(np.round(np.minimum(image_h, valid_kpts[:, 1] + 3 * sigma).max()))
 
         object_bbox = None
         if x_min < x_max and y_min < y_max:
@@ -523,14 +523,14 @@ class RatioPreservingCrop(object):
             obj_x_min, obj_y_min, obj_x_max, obj_y_max = object_bbox
 
             w_offset = 0
-            if crop_w < image_w:
-                w_offset = random.randint(max(0, obj_x_max - crop_w),
-                                          min(obj_x_min, image_w - crop_w))
+            w_offset_min, w_offset_max = max(0, obj_x_max - crop_w), min(obj_x_min, image_w - crop_w)
+            if crop_w < image_w and w_offset_min < w_offset_max:
+                w_offset = random.randint(w_offset_min, w_offset_max)
 
             h_offset = 0
-            if crop_h < image_h:
-                h_offset = random.randint(max(0, obj_y_max - crop_h),
-                                          min(obj_y_min, image_h - crop_h))
+            h_offset_min, h_offset_max = max(0, obj_y_max - crop_h), min(obj_y_min, image_h - crop_h)
+            if crop_h < image_h and h_offset_min < h_offset_max:
+                h_offset = random.randint(h_offset_min, h_offset_max)
         else:
             w_offset = random.randint(0, image_w - crop_w) if crop_w < image_w else 0
             h_offset = random.randint(0, image_h - crop_h) if crop_h < image_h else 0
@@ -544,15 +544,19 @@ class RatioPreservingCrop(object):
 
         img_size = img_data[0].shape[:2]
 
-        object_bbox = None
         if self.use_kpts and 'kpts' in results:
-            frame_inds = results['frame_inds'].flatten()
-            object_bbox = self._estimate_object_bbox(results['kpts'], frame_inds, img_size, self.sigma_scale)
+            frame_inds = results['frame_inds'].flatten().reshape([num_clips, -1])
+            object_bboxes = [
+                self._estimate_object_bbox(results['kpts'], frame_inds[clip_id], img_size, self.sigma_scale)
+                for clip_id in range(num_clips)
+            ]
+        else:
+            object_bboxes = [None] * num_clips
 
         rand_boxes = []
         for clip_id in range(num_clips):
             crop_w, crop_h, offset_w, offset_h = self._sample_crop_bbox(
-                self.scale_limits, img_size, self.input_size, object_bbox
+                self.scale_limits, img_size, self.input_size, object_bboxes[clip_id]
             )
             rand_boxes.append(np.array([offset_w, offset_h, offset_w + crop_w - 1, offset_h + crop_h - 1]))
 
