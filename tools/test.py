@@ -222,8 +222,14 @@ def main():
                             in_record_name = os.path.basename(src_data_path)
                             out_record_name = f'{in_record_name}_gt{gt_label}_pred{pred_label}_conf{pred_conf:.3f}'
                             trg_data_path = os.path.join(out_invalid_dir, out_record_name)
+                            os.makedirs(trg_data_path)
 
-                            shutil.copytree(src_data_path, trg_data_path)
+                            start_frame_id = record_info['clip_start'] + dataset.start_index
+                            end_frame_id = record_info['clip_end'] + dataset.start_index
+                            for frame_id in range(start_frame_id, end_frame_id):
+                                img_name = f'{frame_id:05}.jpg'
+                                shutil.copyfile(os.path.join(src_data_path, img_name),
+                                                os.path.join(trg_data_path, img_name))
 
 
 if __name__ == '__main__':
