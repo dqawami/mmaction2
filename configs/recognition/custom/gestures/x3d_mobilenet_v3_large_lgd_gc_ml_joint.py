@@ -1,8 +1,8 @@
 # global parameters
-num_videos_per_gpu = 12
+num_videos_per_gpu = 14
 num_workers_per_gpu = 3
-train_sources = 'ucf101',
-test_sources = 'ucf101',
+train_sources = 'jester', 'iso_gd', 'msasl'
+test_sources = 'jester', 'iso_gd', 'msasl'
 
 root_dir = 'data'
 work_dir = None
@@ -14,7 +14,7 @@ reset_layer_suffixes = None
 # model settings
 input_img_size = 224
 clip_len = 16
-frame_interval = 2
+trg_fps = 15
 
 model = dict(
     type='Recognizer3D',
@@ -47,7 +47,7 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=700,
+        num_classes=27,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
@@ -102,20 +102,20 @@ img_norm_cfg = dict(
     to_bgr=False
 )
 train_pipeline = [
-    dict(type='DecordInit'),
-    dict(type='SampleFrames',
+    dict(type='StreamSampleFrames',
          clip_len=clip_len,
-         frame_interval=frame_interval,
+         trg_fps=trg_fps,
          num_clips=1,
-         temporal_jitter=True),
-    dict(type='DecordDecode'),
+         temporal_jitter=True,
+         min_intersection=1.0),
+    dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
-    dict(type='RandomResizedCrop',
-         area_range=(0.4, 1.0),
-         aspect_ratio_range=(0.5, 1.5)),
-    dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
+    dict(type='RatioPreservingCrop',
+         input_size=input_img_size,
+         scale_limits=(1, 0.875)),
     dict(type='Flip', flip_ratio=0.5),
+    dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
     dict(type='ProbCompose',
          transforms=[
              dict(type='Empty'),
@@ -129,20 +129,19 @@ train_pipeline = [
          ],
          probs=[0.1, 0.45, 0.45]),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCTHW'),
+    dict(type='FormatShape', input_format='NCTHW', targets=['imgs']),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs', 'label', 'dataset_id'])
 ]
 val_pipeline = [
-    dict(type='DecordInit'),
-    dict(type='SampleFrames',
+    dict(type='StreamSampleFrames',
          clip_len=clip_len,
-         frame_interval=frame_interval,
+         trg_fps=trg_fps,
          num_clips=1,
          test_mode=True),
-    dict(type='DecordDecode'),
+    dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
-    dict(type='CenterCrop', crop_size=(input_img_size, input_img_size)),
+    dict(type='CenterCrop', crop_size=input_img_size),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'dataset_id'], meta_keys=[]),
@@ -155,8 +154,9 @@ data = dict(
         drop_last=True
     ),
     shared=dict(
-        type='VideoDataset',
-        data_subdir='videos',
+        type='StreamDataset',
+        data_subdir='global_crops',
+        filename_tmpl=['{:05d}.jpg', '{:05d}.jpg', 'img_{:05d}.jpg']
     ),
     train=dict(
         source=train_sources,
@@ -165,12 +165,12 @@ data = dict(
     ),
     val=dict(
         source=test_sources,
-        ann_file='test.txt',
+        ann_file='val.txt',
         pipeline=val_pipeline
     ),
     test=dict(
         source=test_sources,
-        ann_file='test.txt',
+        ann_file='val.txt',
         pipeline=val_pipeline
     )
 )
