@@ -1336,6 +1336,18 @@ class RawFrameDecode(object):
         results['original_shape'] = imgs[0].shape[:2]
         results['img_shape'] = imgs[0].shape[:2]
 
+        from pprint import pformat
+        from copy import deepcopy
+
+        temp_results = deepcopy(results)
+        temp_results['imgs'] = None
+
+        # print(pformat(temp_results))
+        # print(pformat(len(results['imgs'])))
+        # print(pformat([img.shape for img in results['imgs']]))
+        # print(pformat([img.dtype for img in results['imgs']]))
+        # assert False
+
         return results
 
     def __repr__(self):

@@ -187,3 +187,27 @@ class DistEvalHook(EvalHook):
                 self.best_json['best_ckpt'] = current_ckpt_path
                 self.best_json['key_indicator'] = self.key_indicator
                 mmcv.dump(self.best_json, json_path)
+
+class EvalPlusBeforeRunHook(EvalHook):
+    """Evaluation hook, adds evaluation before training.
+    """
+    def before_run(self, runner):
+        from mmaction.apis import single_gpu_test
+        results = single_gpu_test(runner.model, self.dataloader, show=False)
+        self.evaluate(runner, results)
+
+
+class DistEvalPlusBeforeRunHook(DistEvalHook):
+    """Distributed evaluation hook, adds evaluation before training.
+    """
+
+    def before_run(self, runner):
+        from mmaction.apis import multi_gpu_test
+        results = multi_gpu_test(
+            runner.model,
+            self.dataloader,
+            tmpdir=osp.join(runner.work_dir, '.eval_hook'),
+            gpu_collect=self.gpu_collect)
+        if runner.rank == 0:
+            print('\n')
+            self.evaluate(runner, results)

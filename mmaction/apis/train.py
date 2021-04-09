@@ -7,6 +7,8 @@ from ..core import DistEvalHook, EvalHook, load_checkpoint, DistOptimizerHook, S
 from ..datasets import build_dataloader, build_dataset
 from ..utils import get_root_logger
 from ..models import build_params_manager
+from ..integration.nncf import CompressionHook, wrap_nncf_model
+from .fake_input import get_fake_input
 
 
 def train_model(model,
@@ -62,6 +64,15 @@ def train_model(model,
                         ignore_prefixes=ignore_prefixes,
                         ignore_suffixes=ignore_suffixes)
 
+    if torch.cuda.is_available():
+        model = model.cuda()
+
+    nncf_enable_compression = bool(cfg.get('nncf_config'))
+    if nncf_enable_compression:
+        compression_ctrl, model = wrap_nncf_model(model, cfg, data_loaders[0], get_fake_input)
+    else:
+        compression_ctrl = None
+
     # put model on gpus
     if distributed:
         find_unused_parameters = cfg.get('find_unused_parameters', False)
@@ -77,6 +88,9 @@ def train_model(model,
         model = MMDataParallel(
             model.cuda(cfg.gpu_ids[0]), device_ids=cfg.gpu_ids
         )
+
+    if nncf_enable_compression and distributed:
+        compression_ctrl.distributed()
 
     # build runner
     optimizer = build_optimizer(model, cfg.optimizer)
@@ -143,6 +157,9 @@ def train_model(model,
         eval_hook = DistEvalHook if distributed else EvalHook
         eval_cfg = cfg.get('evaluation', {})
         runner.register_hook(eval_hook(val_dataloader, **eval_cfg))
+
+    if nncf_enable_compression:
+        runner.register_hook(CompressionHook(compression_ctrl=compression_ctrl))
 
     if cfg.resume_from:
         runner.resume(cfg.resume_from)
