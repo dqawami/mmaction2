@@ -183,7 +183,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=4e-3,
+    lr=1e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -205,14 +205,14 @@ params_config = dict(
 lr_config = dict(
     policy='customcos',
     periods=[55],
-    min_lr_ratio=2.5e-3,
+    min_lr_ratio=1e-2,
     alpha=1.5,
     fixed='constant',
     fixed_epochs=5,
-    fixed_ratio=2.5,
+    fixed_ratio=10.0,
     warmup='cos',
     warmup_epochs=5,
-    warmup_ratio=2.5e-3,
+    warmup_ratio=1e-2,
 )
 total_epochs = 65
 
