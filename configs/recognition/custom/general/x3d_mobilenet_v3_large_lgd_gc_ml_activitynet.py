@@ -1,5 +1,6 @@
 # global parameters
 num_videos_per_gpu = 12
+num_test_videos_per_gpu = 6
 num_workers_per_gpu = 3
 train_sources = 'activitynet200',
 test_sources = 'activitynet200',
@@ -153,6 +154,7 @@ val_pipeline = [
 ]
 data = dict(
     videos_per_gpu=num_videos_per_gpu,
+    test_videos_per_gpu=num_test_videos_per_gpu,
     workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
         drop_last=True
