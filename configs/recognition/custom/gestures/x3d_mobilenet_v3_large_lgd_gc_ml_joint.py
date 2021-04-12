@@ -60,10 +60,13 @@ model = dict(
         reg_threshold=0.1,
         loss_cls=dict(
             type='AMSoftmaxLoss',
-            target_loss='ce',
+            target_loss='sl',
             scale_cfg=dict(
-                type='ConstantScalarScheduler',
-                scale=15.0,
+                type='PolyScalarScheduler',
+                start_scale=30.0,
+                end_scale=5.0,
+                power=1.2,
+                num_epochs=40.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -178,7 +181,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-3,
+    lr=4e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -186,8 +189,6 @@ optimizer_config = dict(
     grad_clip=dict(
         method='adaptive',
         clip=0.2,
-        # max_norm=40,
-        # norm_type=2,
     )
 )
 
@@ -202,14 +203,14 @@ params_config = dict(
 lr_config = dict(
     policy='customcos',
     periods=[55],
-    min_lr_ratio=1e-2,
+    min_lr_ratio=2.5e-3,
     alpha=1.5,
     fixed='constant',
     fixed_epochs=5,
-    fixed_ratio=10.0,
+    fixed_ratio=2.5,
     warmup='cos',
     warmup_epochs=5,
-    warmup_ratio=1e-2,
+    warmup_ratio=2.5e-3,
 )
 total_epochs = 65
 
