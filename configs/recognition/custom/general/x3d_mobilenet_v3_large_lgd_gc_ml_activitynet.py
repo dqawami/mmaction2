@@ -1,6 +1,6 @@
 # global parameters
 num_videos_per_gpu = 12
-num_test_videos_per_gpu = 6
+num_test_videos_per_gpu = 1
 num_workers_per_gpu = 3
 train_sources = 'activitynet200',
 test_sources = 'activitynet200',
