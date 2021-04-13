@@ -1,8 +1,8 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'ucf101', 'hmdb51', 'activitynet200'
-test_sources = 'ucf101', 'hmdb51', 'activitynet200'
+train_sources = 'hmdb51',
+test_sources = 'hmdb51',
 
 root_dir = 'data'
 work_dir = None
@@ -47,17 +47,43 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=101,
+        num_classes=51,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
         in_channels=960,
-        embedding=False,
+        embedding=True,
+        embd_size=256,
         enable_rebalance=False,
         rebalance_num_groups=3,
+        reg_weight=1.0,
+        reg_threshold=0.1,
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            loss_weight=1.0
+            type='AMSoftmaxLoss',
+            target_loss='ce',
+            scale_cfg=dict(
+                type='PolyScalarScheduler',
+                start_scale=30.0,
+                end_scale=5.0,
+                power=1.2,
+                num_epochs=40.0,
+            ),
+            pr_product=False,
+            margin_type='cos',
+            margin=0.35,
+            gamma=0.0,
+            t=1.0,
+            conf_penalty_weight=0.085,
+            filter_type='positives',
+            top_k=None,
+        ),
+        losses_extra=dict(
+            loss_lpush=dict(
+                type='LocalPushLoss',
+                margin=0.1,
+                weight=1.0,
+                smart_margin=True,
+            ),
         ),
     ),
 )
@@ -69,7 +95,7 @@ train_cfg = dict(
     loss_norm=dict(enable=False, gamma=0.9)
 )
 test_cfg = dict(
-    average_clips=None
+    average_clips='score'
 )
 
 # dataset settings
@@ -93,11 +119,18 @@ train_pipeline = [
          aspect_ratio_range=(0.5, 1.5)),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='PhotometricDistortion',
-         brightness_range=(65, 190),
-         contrast_range=(0.6, 1.4),
-         saturation_range=(0.7, 1.3),
-         hue_delta=18),
+    dict(type='ProbCompose',
+         transforms=[
+             dict(type='Empty'),
+             dict(type='PhotometricDistortion',
+                  brightness_range=(65, 190),
+                  contrast_range=(0.6, 1.4),
+                  saturation_range=(0.7, 1.3),
+                  hue_delta=18),
+             dict(type='CrossNorm',
+                  mean_std_file='mean_std_list.txt'),
+         ],
+         probs=[0.1, 0.45, 0.45]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
@@ -148,7 +181,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=1e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -162,21 +195,24 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=0,
+    epochs=5,
     open_layers=['cls_head']
 )
 
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[150],
+    periods=[55],
     min_lr_ratio=1e-2,
-    alpha=1.4,
+    alpha=1.5,
+    fixed='constant',
+    fixed_epochs=5,
+    fixed_ratio=10.0,
     warmup='cos',
-    warmup_epochs=10,
+    warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 160
+total_epochs = 65
 
 # workflow
 workflow = [('train', 1)]

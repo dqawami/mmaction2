@@ -47,7 +47,7 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=700,
+        num_classes=101,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
@@ -62,8 +62,11 @@ model = dict(
             type='AMSoftmaxLoss',
             target_loss='ce',
             scale_cfg=dict(
-                type='ConstantScalarScheduler',
-                scale=15.0,
+                type='PolyScalarScheduler',
+                start_scale=30.0,
+                end_scale=5.0,
+                power=1.2,
+                num_epochs=40.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -92,7 +95,7 @@ train_cfg = dict(
     loss_norm=dict(enable=False, gamma=0.9)
 )
 test_cfg = dict(
-    average_clips=None
+    average_clips='score'
 )
 
 # dataset settings
@@ -186,8 +189,6 @@ optimizer_config = dict(
     grad_clip=dict(
         method='adaptive',
         clip=0.2,
-        # max_norm=40,
-        # norm_type=2,
     )
 )
 

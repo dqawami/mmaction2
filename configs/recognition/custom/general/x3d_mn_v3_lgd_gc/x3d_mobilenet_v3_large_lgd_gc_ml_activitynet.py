@@ -48,7 +48,7 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=101,
+        num_classes=200,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
