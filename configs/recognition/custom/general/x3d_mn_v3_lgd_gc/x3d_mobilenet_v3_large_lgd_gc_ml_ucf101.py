@@ -95,7 +95,7 @@ train_cfg = dict(
     loss_norm=dict(enable=False, gamma=0.9)
 )
 test_cfg = dict(
-    average_clips='score'
+    average_clips=None
 )
 
 # dataset settings
