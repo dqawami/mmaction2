@@ -83,12 +83,9 @@ class SampleFrames(object):
 
         if avg_interval > 0:
             base_offsets = np.arange(self.num_clips) * avg_interval
-            clip_offsets = base_offsets + np.random.randint(
-                avg_interval, size=self.num_clips)
+            clip_offsets = base_offsets + np.random.randint(avg_interval, size=self.num_clips)
         elif num_frames > max(self.num_clips, ori_clip_len):
-            clip_offsets = np.sort(
-                np.random.randint(
-                    num_frames - ori_clip_len + 1, size=self.num_clips))
+            clip_offsets = np.sort(np.random.randint(num_frames - ori_clip_len + 1, size=self.num_clips))
         elif avg_interval == 0:
             ratio = (num_frames - ori_clip_len + 1.0) / self.num_clips
             clip_offsets = np.around(np.arange(self.num_clips) * ratio)
@@ -215,11 +212,16 @@ class SampleFrames(object):
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = self.num_clips
+        results['label'] = [results['label']] * self.num_clips\
+            if self.num_clips > 1 else results['label']
+        results['dataset_id'] = [results['dataset_id']] * self.num_clips\
+            if self.num_clips > 1 else results['dataset_id']
 
         return results
 
     def __repr__(self):
-        repr_str = f'{self.__class__.__name__}(clip_len={self.clip_len}, ' \
+        repr_str = f'{self.__class__.__name__}(' \
+                   f'clip_len={self.clip_len}, ' \
                    f'frame_interval={self.frame_interval}, ' \
                    f'num_clips={self.num_clips})'
         return repr_str
