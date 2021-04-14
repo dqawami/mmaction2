@@ -17,7 +17,7 @@ input_clip_length = 16
 frame_interval = 2
 
 # training settings
-enable_mutual_learning = False
+enable_mutual_learning = True
 num_train_clips = 2 if enable_mutual_learning else 1
 
 model = dict(
