@@ -13,7 +13,7 @@ reset_layer_suffixes = None
 
 # model settings
 input_img_size = 224
-clip_len = 16
+input_clip_length = 16
 frame_interval = 2
 
 model = dict(
@@ -107,7 +107,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='DecordInit'),
     dict(type='SampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          frame_interval=frame_interval,
          num_clips=1,
          temporal_jitter=True),
@@ -139,7 +139,7 @@ train_pipeline = [
 val_pipeline = [
     dict(type='DecordInit'),
     dict(type='SampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          frame_interval=frame_interval,
          num_clips=1,
          test_mode=True),

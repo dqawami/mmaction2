@@ -13,7 +13,7 @@ reset_layer_suffixes = None
 
 # model settings
 input_img_size = 224
-clip_len = 16
+input_clip_length = 16
 trg_fps = 15
 
 model = dict(
@@ -106,7 +106,7 @@ img_norm_cfg = dict(
 )
 train_pipeline = [
     dict(type='StreamSampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          trg_fps=trg_fps,
          num_clips=1,
          temporal_jitter=True,
@@ -137,7 +137,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     dict(type='StreamSampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          trg_fps=trg_fps,
          num_clips=1,
          test_mode=True),
