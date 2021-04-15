@@ -52,6 +52,9 @@ class PositionwiseFeedForward(nn.Module):
 
 
 class Attention(nn.Module):
+    def __init__(self):
+        super().__init__()
+
     def forward(self, query, key, value, mask=None, dropout=None):
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                  / math.sqrt(query.size(-1))
@@ -109,9 +112,10 @@ class TransformerBlock(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, mask):
-        x = self.input_sublayer(x, lambda _x: self.attention.forward(_x, _x, _x, mask=mask))
-        x = self.output_sublayer(x, self.feed_forward)
-        return self.dropout(x)
+        y = self.input_sublayer(x, lambda _x: self.attention(_x, _x, _x, mask=mask))
+        y = self.output_sublayer(y, self.feed_forward)
+        y = self.dropout(y)
+        return y
 
 
 class BERTEmbedding(nn.Module):
@@ -207,7 +211,8 @@ class BERTSpatialTemporalModule(nn.Module):
         y = self.spatial_pool(y)
         input_vectors = y.view(-1, self.hidden_size, self.temporal_size).transpose(1, 2)
 
-        output = self.bert(input_vectors)
+        outputs = self.bert(input_vectors)
+        output = outputs[:, 0].view(-1, self.hidden_size, 1, 1, 1)
 
         if return_extra_data:
             return output, dict()
