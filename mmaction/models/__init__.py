@@ -15,7 +15,8 @@ from .recognizers import BaseRecognizer, recognizer2d, recognizer3d
 from .registry import (BACKBONES, HEADS, LOCALIZERS, LOSSES, RECOGNIZERS, SCALAR_SCHEDULERS,
                        PARAMS_MANAGERS, SPATIAL_TEMPORAL_MODULES)
 from .spatial_temporal_modules import (AggregatorSpatialTemporalModule, AverageSpatialTemporalModule,
-                                       NonLocalModule, TRGSpatialTemporalModule)
+                                       NonLocalModule, TRGSpatialTemporalModule,
+                                       BERTSpatialTemporalModule)
 from .params import FreezeLayers
 from .scalar_schedulers import ConstantScalarScheduler, PolyScalarScheduler, StepScalarScheduler
 
@@ -33,5 +34,6 @@ __all__ = [
     'LocalPushLoss', 'TotalVarianceLoss', 'ClipMixingLoss',
     'BinaryLogisticRegressionLoss', 'BMN', 'BMNLoss', 'build_model',
     'OHEMHingeLoss', 'SSNLoss', 'ResNet3dCSN', 'ResNetTIN',
-    'FreezeLayers', 'ConstantScalarScheduler', 'PolyScalarScheduler', 'StepScalarScheduler'
+    'FreezeLayers', 'ConstantScalarScheduler', 'PolyScalarScheduler', 'StepScalarScheduler',
+    'BERTSpatialTemporalModule',
 ]
