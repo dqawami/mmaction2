@@ -114,7 +114,7 @@ class TransformerBlock(nn.Module):
     def forward(self, x, mask):
         y = self.input_sublayer(x, lambda _x: self.attention(_x, _x, _x, mask=mask))
         y = self.output_sublayer(y, self.feed_forward)
-        y = self.dropout(y)
+        # y = self.dropout(y)
         return y
 
 
@@ -132,7 +132,7 @@ class BERTEmbedding(nn.Module):
 
     def forward(self, sequence):
         y = self.pe + sequence
-        y = self.dropout(y)
+        # y = self.dropout(y)
         return y
 
 
@@ -181,7 +181,7 @@ class BERT(nn.Module):
 
         # running over multiple transformer blocks
         for transformer in self.transformer_blocks:
-            y = transformer.forward(y, mask)
+            y = transformer(y, mask)
 
         return y
 
@@ -198,7 +198,9 @@ class BERTSpatialTemporalModule(nn.Module):
         self.num_layers = num_layers
         self.num_heads = num_heads
 
-        self.mapper = conv_1x1x1_bn(self.in_channels, self.hidden_size, as_list=False)
+        self.mapper = None
+        if self.in_channels != self.hidden_size:
+            self.mapper = conv_1x1x1_bn(self.in_channels, self.hidden_size, as_list=False)
         self.spatial_pool = nn.AvgPool3d((1,) + self.spatial_size, stride=1, padding=0)
         self.bert = BERT(self.hidden_size, self.temporal_size,
                          hidden=self.hidden_size, n_layers=self.num_layers, attn_heads=self.num_heads)
@@ -207,8 +209,9 @@ class BERTSpatialTemporalModule(nn.Module):
         pass
 
     def forward(self, x, return_extra_data=False):
-        y = self.mapper(x)
-        y = self.spatial_pool(y)
+        y = self.spatial_pool(x)
+        if self.mapper is not None:
+            y = self.mapper(y)
         input_vectors = y.view(-1, self.hidden_size, self.temporal_size).transpose(1, 2)
 
         outputs = self.bert(input_vectors)

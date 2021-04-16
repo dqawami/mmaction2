@@ -40,6 +40,14 @@ model = dict(
         channel_factor=3,
         use_temporal_avg_pool=True,
         out_conv=True,
+        use_dropout=True,
+        internal_dropout=True,
+        dropout_cfg=dict(
+            dist='gaussian',
+            p=0.1,
+            mu=0.1,
+            sigma=0.03,
+        ),
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
@@ -48,7 +56,7 @@ model = dict(
                  in_channels=960,
                  temporal_size=4,
                  spatial_size=7,
-                 hidden_size=512,
+                 hidden_size=960,
                  num_layers=1,
                  num_heads=8),
         ],
@@ -59,7 +67,7 @@ model = dict(
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
-        in_channels=512,
+        in_channels=960,
         embedding=True,
         embd_size=256,
         enable_rebalance=False,
@@ -203,7 +211,7 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=10,
     open_layers=['cls_head', 'spatial_temporal_module']
 )
 
@@ -220,7 +228,7 @@ lr_config = dict(
     warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 65
+total_epochs = 70
 
 # workflow
 workflow = [('train', 1)]
