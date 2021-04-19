@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..registry import NECKS
-from ...core.ops import conv_1x1x1_bn, HSwish
+from ...core.ops import conv_1x1x1_bn, HSwish, normalize
 
 
 @NECKS.register_module()
@@ -28,18 +28,24 @@ class VideoAligner(nn.Module):
         pass
 
     def forward(self, x, return_extra_data=False):
-        y = None
+        temporal_embd = None
         if not self.training:
             y = self.spatial_pool(x)
             y = self.mapper(y)
+            temporal_embd = normalize(y, dim=1)
 
         # returns the input unchanged
         if return_extra_data:
-            return x, dict(features=y)
+            return x, dict(temporal_embd=temporal_embd)
         else:
             return x
 
-    def loss(self, features, labels, dataset_id):
+    def loss(self, temporal_embd=None, labels=None, dataset_id=None):
+        if temporal_embd is None or labels is None or dataset_id is None:
+            return dict()
+
+        temporal_embd = temporal_embd.view(-1, self.embd_size, self.temporal_size)
+
         losses = dict()
 
         return losses
