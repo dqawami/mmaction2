@@ -2,7 +2,7 @@ import torch.nn as nn
 from mmcv.utils import build_from_cfg
 
 from .registry import (BACKBONES, SPATIAL_TEMPORAL_MODULES, HEADS, LOCALIZERS, LOSSES, RECOGNIZERS,
-                       SCALAR_SCHEDULERS, PARAMS_MANAGERS)
+                       SCALAR_SCHEDULERS, PARAMS_MANAGERS, NECKS)
 
 
 def build(cfg, registry, default_args=None):
@@ -36,7 +36,13 @@ def build_backbone(cfg):
 
 
 def build_reducer(cfg):
+    """Build spatio-temporal reducer."""
     return build(cfg, SPATIAL_TEMPORAL_MODULES)
+
+
+def build_neck(cfg):
+    """Build neck."""
+    return build(cfg, NECKS)
 
 
 def build_head(cfg, class_sizes=None):

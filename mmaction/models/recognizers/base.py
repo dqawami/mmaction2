@@ -59,6 +59,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                  backbone,
                  cls_head,
                  reducer=None,
+                 aligner=None,
                  class_sizes=None,
                  class_maps=None,
                  train_cfg=None,
@@ -90,6 +91,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.backbone = builder.build_backbone(backbone)
         self.spatial_temporal_module = builder.build_reducer(reducer)
         self.cls_head = builder.build_head(cls_head, class_sizes)
+        self.aligner = builder.build_neck(aligner)
 
         if self.with_clip_mixing:
             self.clip_mixing_loss = builder.build_loss(dict(
@@ -232,6 +234,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         features = self._forward_module_train(
             self.backbone, imgs, losses,
             squeeze=True, attention_mask=attention_mask
+        )
+        features = self._forward_module_train(
+            self.aligner, features, losses
         )
         features = self._forward_module_train(
             self.spatial_temporal_module, features, losses
