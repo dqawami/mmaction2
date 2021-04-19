@@ -43,31 +43,21 @@ class PositionwiseFeedForward(nn.Module):
         self.w_2 = nn.Linear(d_ff, d_model)
         self.dropout = nn.Dropout(dropout)
 
+        self._init_weights()
+
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                module.weight.data.normal_(mean=0, std=0.02)
+                if hasattr(module, 'bias') and module.bias is not None:
+                    module.bias.data.zero_()
+
     @staticmethod
     def _gelu_activation(x):
         return 0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
 
     def forward(self, x):
         return self.w_2(self.dropout(self._gelu_activation(self.w_1(x))))
-
-
-class Attention(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, query, key, value, mask=None, dropout=None):
-        scores = torch.matmul(query, key.transpose(-2, -1)) \
-                 / math.sqrt(query.size(-1))
-
-        if mask is not None:
-            scores = scores.masked_fill(mask == 0, -1e9)
-
-        p_attn = F.softmax(scores, dim=-1)
-
-        if dropout is not None:
-            p_attn = dropout(p_attn)
-
-        return torch.matmul(p_attn, value), p_attn
 
 
 class MultiHeadedAttention(nn.Module):
@@ -81,9 +71,32 @@ class MultiHeadedAttention(nn.Module):
 
         self.linear_layers = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(3)])
         self.output_linear = nn.Linear(d_model, d_model)
-        self.attention = Attention()
 
         self.dropout = nn.Dropout(p=dropout)
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                module.weight.data.normal_(mean=0, std=0.02)
+                if hasattr(module, 'bias') and module.bias is not None:
+                    module.bias.data.zero_()
+
+    @staticmethod
+    def _attention(query, key, value, mask=None, dropout=None):
+        scale = 1.0 / math.sqrt(query.size(-1))
+        scores = scale * torch.matmul(query, key.transpose(-2, -1))
+
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)
+
+        p_attn = F.softmax(scores, dim=-1)
+
+        if dropout is not None:
+            p_attn = dropout(p_attn)
+
+        return torch.matmul(p_attn, value)
 
     def forward(self, query, key, value, mask=None):
         batch_size = query.size(0)
@@ -93,7 +106,7 @@ class MultiHeadedAttention(nn.Module):
                              for l, x in zip(self.linear_layers, (query, key, value))]
 
         # 2) Apply attention on all the projected vectors in batch.
-        x, attn = self.attention(query, key, value, mask=mask, dropout=self.dropout)
+        x = self._attention(query, key, value, mask=mask, dropout=self.dropout)
 
         # 3) "Concat" using a view and apply a final linear.
         x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.h * self.d_k)
@@ -114,7 +127,7 @@ class TransformerBlock(nn.Module):
     def forward(self, x, mask):
         y = self.input_sublayer(x, lambda _x: self.attention(_x, _x, _x, mask=mask))
         y = self.output_sublayer(y, self.feed_forward)
-        # y = self.dropout(y)
+        y = self.dropout(y)
         return y
 
 
@@ -132,7 +145,7 @@ class BERTEmbedding(nn.Module):
 
     def forward(self, sequence):
         y = self.pe + sequence
-        # y = self.dropout(y)
+        y = self.dropout(y)
         return y
 
 
@@ -150,6 +163,9 @@ class BERT(nn.Module):
         self.cls_token = nn.Parameter(torch.Tensor(1, 1, self.input_dim))
         self.cls_token.data.normal_(std=0.02)
 
+        token_drop_probs = torch.cat((torch.ones([1]), torch.full([self.max_len], self.mask_prob)), dim=0)
+        self.register_buffer('token_drop_probs', token_drop_probs)
+
         # paper noted they used 4*hidden_size for ff_network_hidden_size
         self.feed_forward_hidden = hidden * 4
 
@@ -166,14 +182,13 @@ class BERT(nn.Module):
         # attention masking for padded token
         batch_size = input_vectors.shape[0]
         if self.training:
-            bernoulli_matrix = torch.cat((torch.tensor([1]).float().cuda(),
-                                         (torch.tensor([self.mask_prob]).float().cuda()).repeat(self.max_len)),
-                                         0).unsqueeze(0).repeat([batch_size, 1])
-            bernoulli_distributor = torch.distributions.Bernoulli(bernoulli_matrix)
-            sample = bernoulli_distributor.sample()
-            mask = (sample > 0).unsqueeze(1).repeat(1, sample.size(1), 1).unsqueeze(1)
+            token_drop_probs = self.token_drop_probs.unsqueeze(0).repeat(batch_size, 1)
+            rand_matrix = torch.rand([batch_size, self.max_len + 1],
+                                     dtype=input_vectors.dtype, device=input_vectors.device)
+            mask = (rand_matrix < token_drop_probs).unsqueeze(1).repeat(1, self.max_len + 1, 1).unsqueeze(1)
         else:
-            mask = torch.ones(batch_size, 1, self.max_len + 1, self.max_len + 1).cuda()
+            mask = torch.ones(batch_size, 1, self.max_len + 1, self.max_len + 1,
+                              dtype=input_vectors.dtype, device=input_vectors.device)
 
         # embedding the indexed sequence to sequence of vectors
         y = torch.cat((self.cls_token.repeat(batch_size, 1, 1), input_vectors), 1)

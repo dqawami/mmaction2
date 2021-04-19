@@ -56,7 +56,7 @@ model = dict(
                  in_channels=960,
                  temporal_size=4,
                  spatial_size=7,
-                 hidden_size=960,
+                 hidden_size=512,
                  num_layers=1,
                  num_heads=8),
         ],
@@ -67,7 +67,7 @@ model = dict(
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
-        in_channels=960,
+        in_channels=512,
         embedding=True,
         embd_size=256,
         enable_rebalance=False,
@@ -221,14 +221,14 @@ lr_config = dict(
     periods=[55],
     min_lr_ratio=1e-2,
     alpha=1.5,
-    fixed='constant',
+    fixed='cos',
     fixed_epochs=5,
     fixed_ratio=10.0,
     warmup='cos',
     warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 70
+total_epochs = 65
 
 # workflow
 workflow = [('train', 1)]
