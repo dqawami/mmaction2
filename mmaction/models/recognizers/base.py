@@ -236,7 +236,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             squeeze=True, attention_mask=attention_mask
         )
         features = self._forward_module_train(
-            self.neck, features, losses
+            self.neck, features, losses,
+            labels=labels, dataset_id=dataset_id
         )
         features = self._forward_module_train(
             self.spatial_temporal_module, features, losses

@@ -8,7 +8,7 @@ root_dir = 'data'
 work_dir = None
 load_from = None
 resume_from = None
-reset_layer_prefixes = ['cls_head']
+reset_layer_prefixes = ['neck', 'cls_head']
 reset_layer_suffixes = None
 
 # model settings
@@ -41,6 +41,14 @@ model = dict(
         use_temporal_avg_pool=True,
         out_conv=True,
     ),
+    neck=dict(
+        type='VideoAligner',
+        in_channels=960,
+        temporal_size=4,
+        spatial_size=7,
+        hidden_size=512,
+        embedding_size=256,
+    ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
         modules=[
@@ -48,13 +56,6 @@ model = dict(
                  temporal_size=4,
                  spatial_size=7),
         ],
-    ),
-    neck=dict(
-        type='VideoAligner',
-        in_channels=960,
-        temporal_size=4,
-        spatial_size=7,
-        hidden_size=256,
     ),
     cls_head=dict(
         type='ClsHead',
@@ -207,7 +208,7 @@ optimizer_config = dict(
 params_config = dict(
     type='FreezeLayers',
     epochs=5,
-    open_layers=['cls_head']
+    open_layers=['neck', 'cls_head']
 )
 
 # learning policy
