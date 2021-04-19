@@ -25,9 +25,9 @@ class VideoAligner(nn.Module):
         pass
 
     def forward(self, x, return_extra_data=False):
-        y = self.spatial_pool(x)
+        features = self.spatial_pool(x)
         if self.mapper is not None:
-            y = self.mapper(y)
+            features = self.mapper(features)
 
         # returns the input unchanged
         if return_extra_data:

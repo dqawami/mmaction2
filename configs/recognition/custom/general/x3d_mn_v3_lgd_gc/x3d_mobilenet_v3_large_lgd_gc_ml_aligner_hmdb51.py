@@ -49,7 +49,7 @@ model = dict(
                  spatial_size=7),
         ],
     ),
-    aligner=dict(
+    neck=dict(
         type='VideoAligner',
         in_channels=960,
         temporal_size=4,
