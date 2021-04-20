@@ -93,6 +93,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.cls_head = builder.build_head(cls_head, class_sizes)
         self.neck = builder.build_neck(neck)
 
+        self.num_clips = 1
         if self.with_clip_mixing:
             self.clip_mixing_loss = builder.build_loss(dict(
                 type='ClipMixingLoss',
@@ -100,6 +101,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 num_clips=train_cfg.clip_mixing.num_clips,
                 loss_weight=train_cfg.clip_mixing.weight
             ))
+            self.num_clips = train_cfg.clip_mixing.num_clips
 
         self.losses_meta = None
         if self.with_loss_norm:
@@ -237,7 +239,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         )
         features = self._forward_module_train(
             self.neck, features, losses,
-            labels=labels, dataset_id=dataset_id
+            labels=labels, dataset_id=dataset_id, num_clips=self.num_clips
         )
         features = self._forward_module_train(
             self.spatial_temporal_module, features, losses

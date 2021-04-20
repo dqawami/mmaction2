@@ -46,8 +46,8 @@ model = dict(
         in_channels=960,
         temporal_size=4,
         spatial_size=7,
-        hidden_size=512,
-        embedding_size=256,
+        hidden_size=256,
+        embedding_size=128,
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',

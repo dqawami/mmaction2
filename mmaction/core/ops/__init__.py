@@ -14,6 +14,7 @@ from .temporal_samplers import SimilarityGuidedSampling
 from .pooling import AdaptivePool3D
 from .regularizers import NormRegularizer
 from .normalizers import balance_losses
+from .soft_dtw import soft_dtw
 
 __all__ = ['Conv2d', 'Conv3d',
            'conv_kxkxk_bn', 'conv_1xkxk_bn', 'conv_kx1x1_bn', 'conv_1x1x1_bn',
@@ -30,4 +31,5 @@ __all__ = ['Conv2d', 'Conv3d',
            'AdaptivePool3D',
            'NormRegularizer',
            'balance_losses',
+           'soft_dtw',
            ]

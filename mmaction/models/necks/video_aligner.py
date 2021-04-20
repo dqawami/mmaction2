@@ -1,15 +1,26 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+from mmcv.cnn import constant_init, kaiming_init
 
 from ..registry import NECKS
-from ...core.ops import conv_1x1x1_bn, HSwish, normalize
+from ...core.ops import conv_1x1x1_bn, HSwish, normalize, soft_dtw
 
 
 @NECKS.register_module()
 class VideoAligner(nn.Module):
-    def __init__(self, in_channels, spatial_size=7, temporal_size=1, hidden_size=512, embedding_size=256):
+    """
+    Implementation of the paper: https://arxiv.org/abs/2103.17260
+    """
+
+    def __init__(self, in_channels, spatial_size=7, temporal_size=1, hidden_size=512, embedding_size=256,
+                 smoothness=0.1, margin=2, window_size=1, reg_weight=0.1):
         super().__init__()
+
+        self.smoothness = smoothness
+        self.margin = margin
+        self.window_size = window_size
+        self.reg_weight = reg_weight
 
         self.in_channels = in_channels
         self.spatial_size = spatial_size if not isinstance(spatial_size, int) else (spatial_size, spatial_size)
@@ -25,11 +36,17 @@ class VideoAligner(nn.Module):
         self.spatial_pool = nn.AvgPool3d((1,) + self.spatial_size, stride=1, padding=0)
 
     def init_weights(self):
-        pass
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                kaiming_init(m)
+            elif isinstance(m, nn.BatchNorm3d):
+                constant_init(m, 1.0, 0.0)
+            elif isinstance(m, nn.Parameter):
+                m.data.normal_()
 
     def forward(self, x, return_extra_data=False):
         temporal_embd = None
-        if not self.training:
+        if self.training:
             y = self.spatial_pool(x)
             y = self.mapper(y)
             temporal_embd = normalize(y, dim=1)
@@ -40,12 +57,76 @@ class VideoAligner(nn.Module):
         else:
             return x
 
-    def loss(self, temporal_embd=None, labels=None, dataset_id=None):
-        if temporal_embd is None or labels is None or dataset_id is None:
-            return dict()
-
-        temporal_embd = temporal_embd.view(-1, self.embd_size, self.temporal_size)
-
+    def loss(self, temporal_embd=None, labels=None, dataset_id=None, num_clips=1):
         losses = dict()
 
+        if temporal_embd is None or labels is None:
+            return losses
+
+        with torch.no_grad():
+            batch_size = temporal_embd.size(0)
+            batch_range = torch.arange(batch_size, device=labels.device)
+            top_diagonal_pairs = batch_range.view(-1, 1) < batch_range.view(1, -1)
+            same_class_pairs = labels.view(-1, 1) == labels.view(1, -1)
+            valid_pairs = same_class_pairs * top_diagonal_pairs
+
+            if dataset_id is not None:
+                same_dataset_pairs = dataset_id.view(-1, 1) == dataset_id.view(1, -1)
+                valid_pairs = same_dataset_pairs * valid_pairs
+
+            if num_clips > 1:
+                instances_range = torch.arange(0, batch_size, num_clips, device=labels.device)
+                instances_batch_range = instances_range.view(-1, 1).repeat(1, 2)
+                different_instance_pairs = batch_range.view(-1, 1) < instances_batch_range.view(1, -1)
+                valid_pairs = different_instance_pairs * valid_pairs
+
+            valid_samples_mask = torch.any(valid_pairs, dim=-1)
+            num_valid_pairs = torch.sum(valid_samples_mask, dim=0).item()
+            if num_valid_pairs == 0:
+                losses['loss/align'] = torch.zeros([], dtype=temporal_embd.dtype, device=temporal_embd.device)
+                return losses
+
+            valid_pairs_subset = valid_pairs[valid_samples_mask]
+            valid_pairs_ids = torch.argmax(valid_pairs_subset.int(), dim=-1)
+
+        temporal_embd = temporal_embd.view(-1, self.embd_size, self.temporal_size)
+        left_embd = temporal_embd[valid_samples_mask]
+        right_embd = temporal_embd[valid_pairs_ids]
+
+        pair_distances = 1.0 - torch.matmul(left_embd.transpose(1, 2), right_embd)
+        left_distances = 1.0 - torch.matmul(left_embd.transpose(1, 2), left_embd)
+        right_distances = 1.0 - torch.matmul(right_embd.transpose(1, 2), right_embd)
+
+        main_losses = soft_dtw(pair_distances, self.smoothness, 0)
+        losses['loss/align'] = main_losses.mean()
+
+        left_reg_loss = self._contrastive_idm_loss(left_distances, self.margin, self.window_size)
+        right_reg_loss = self._contrastive_idm_loss(right_distances, self.margin, self.window_size)
+        reg_loss = (self.reg_weight / float(num_valid_pairs)) * (left_reg_loss + right_reg_loss)
+        losses['loss/align_reg'] = reg_loss
+
         return losses
+
+    @staticmethod
+    def _contrastive_idm_loss(dist_matrix, margin, window_size):
+        with torch.no_grad():
+            temporal_size = dist_matrix.size(1)
+            temporal_range = torch.arange(temporal_size, device=dist_matrix.device)
+            range_diff = temporal_range.view(-1, 1) - temporal_range.view(1, -1)
+            mode_mask = torch.abs(range_diff) > window_size
+
+            outer_weights = range_diff ** 2 + 1.0
+            inner_weights = torch.reciprocal(outer_weights)
+
+        inner_losses = inner_weights.unsqueeze(0) * dist_matrix
+        outer_losses = outer_weights.unsqueeze(0) * (margin - dist_matrix).clamp_min(0.0)
+        losses = torch.where(mode_mask.unsqueeze(0), outer_losses, inner_losses)
+
+        weight = 1.0 / float(temporal_size * temporal_size)
+        loss = weight * torch.sum(losses)
+
+        return loss
+
+
+
+
