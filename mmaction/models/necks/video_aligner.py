@@ -49,7 +49,7 @@ class VideoAligner(nn.Module):
         if self.training:
             y = self.spatial_pool(x)
             y = self.mapper(y)
-            temporal_embd = normalize(y, dim=1)
+            temporal_embd = normalize(y, dim=1, p=2)
 
         # returns the input unchanged
         if return_extra_data:
@@ -84,6 +84,7 @@ class VideoAligner(nn.Module):
             num_valid_pairs = torch.sum(valid_samples_mask, dim=0).item()
             if num_valid_pairs == 0:
                 losses['loss/align'] = torch.zeros([], dtype=temporal_embd.dtype, device=temporal_embd.device)
+                losses['loss/align_reg'] = torch.zeros([], dtype=temporal_embd.dtype, device=temporal_embd.device)
                 return losses
 
             valid_pairs_subset = valid_pairs[valid_samples_mask]
@@ -93,9 +94,9 @@ class VideoAligner(nn.Module):
         left_embd = temporal_embd[valid_samples_mask]
         right_embd = temporal_embd[valid_pairs_ids]
 
-        pair_distances = 1.0 - torch.matmul(left_embd.transpose(1, 2), right_embd)
-        left_distances = 1.0 - torch.matmul(left_embd.transpose(1, 2), left_embd)
-        right_distances = 1.0 - torch.matmul(right_embd.transpose(1, 2), right_embd)
+        pair_distances = (1.0 - torch.matmul(left_embd.transpose(1, 2), right_embd)).clamp_min(0.0)
+        left_distances = (1.0 - torch.matmul(left_embd.transpose(1, 2), left_embd)).clamp_min(0.0)
+        right_distances = (1.0 - torch.matmul(right_embd.transpose(1, 2), right_embd)).clamp_min(0.0)
 
         main_losses = soft_dtw(pair_distances, self.smoothness, 0)
         losses['loss/align'] = main_losses.mean()
