@@ -11,6 +11,7 @@ from mmcv.runner import auto_fp16
 
 from .. import builder
 from ...core.ops import rsc, NormRegularizer, balance_losses
+from ...integration.nncf import is_in_nncf_tracing, no_nncf_trace
 
 
 class EvalModeSetter:
@@ -137,6 +138,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 head.update_state(*args, **kwargs)
 
     @auto_fp16()
+<<<<<<< HEAD
     def _forward_module_train(self, module, x, losses, squeeze=False, squeeze_dim=-1, **kwargs):
         if module is None:
             out = x
@@ -151,6 +153,33 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             out = out[squeeze_dim]
 
         return out
+=======
+    def _forward_module_train(self, module, x, losses, squeeze=False, **kwargs):
+        print("X data type")
+        print(type(x))
+        if module is None:
+            print("Module is none")
+            y = x
+        elif hasattr(module, 'loss'):
+            print("Module has loss")
+            y, extra_data = module(x, return_extra_data=True)
+            losses.update(module.loss(**extra_data, **kwargs))
+        else:
+            print("Module has no loss")
+            y = module(x)
+
+        if squeeze and isinstance(y, (list, tuple)):
+            print("output is list or tuple and can be squeezed")
+            assert len(y) == 1
+            y = y[0]
+
+        print("_forward_module_train; Y")
+        print('requires grad: ', y.requires_grad)
+        print(type(y))
+        print(y.size())
+
+        return y
+>>>>>>> Added comments for debugging
 
     @auto_fp16()
     def _extract_features_test(self, imgs):
@@ -223,14 +252,33 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
     @staticmethod
     def _filter(x, mask):
+        # print('x', x)
+        print('base_recognizer; _filter; x.requires_grad', x.requires_grad)
+        print('base_recognizer; _filter; x.grad_fn', x.grad_fn)
+        # if is_in_nncf_tracing():
+        #     x.type(torch.Tensor)
+        #     out.requires_grad = True
+        print('base_recognizer; _filter; x.type', x.type())
+        print('base_recognizer; _filter; x.requires_grad', x.requires_grad)
+        print('base_recognizer; _filter; x.grad_fn', x.grad_fn)
         if x is None:
             return None
         elif mask is None:
             return x
         elif isinstance(x, (tuple, list)):
-            return [_x[mask] for _x in x]
+            print('x is tuple or list')
+            out = [_x[mask] for _x in x]
         else:
-            return x[mask]
+            out = x[mask]
+            # out.requires_grad = True
+            print('base_recognizer; _filter; x is not None and is not tuple or list')
+            # print('mask', mask)
+            print('base_recognizer; _filter; mask.grad_fn', mask.grad_fn)
+            # print('x[mask].cput().detach().numpy()', x[mask].cpu().detach().numpy())
+            print('base_recognizer; _filter; x[mask].grad_fn', x[mask].grad_fn)
+            print('base_recognizer; _filter; x[mask].device', x[mask].device)
+            print('base_recognizer; _filter; out.type()', out.type())
+        return out
 
     def forward_train(self, imgs, labels, dataset_id=None, attention_mask=None, **kwargs):
         imgs, attention_mask, head_args = self.reshape_input(imgs, attention_mask)
@@ -247,8 +295,11 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             self.spatial_temporal_module, features, losses
         )
 
+        print("base_recognizer; forward_train; With self challenging: ", str(self.with_self_challenging))
         if self.with_self_challenging and not features.requires_grad:
             features.requires_grad = True
+
+        print("base_recognizer; forward_train; Feature requires grad: ", str(features.requires_grad))
 
         if self.with_sample_filtering:
             pred_labels = torch.zeros_like(labels.view(-1))
@@ -257,6 +308,10 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         heads = self.cls_head if self.multi_head else [self.cls_head]
         for head_id, cl_head in enumerate(heads):
             trg_mask = (dataset_id == head_id).view(-1) if dataset_id is not None else None
+            print("base_recognizer; forward_train; base.forward_train; trg_mask")
+            print('base_recognizer; forward_train; requires grad: ', trg_mask.requires_grad)
+            print('base_recognizer; forward_train; type', type(trg_mask))
+            print('base_recognizer; forward_train; size', trg_mask.size())
 
             trg_labels = self._filter(labels.view(-1), trg_mask)
             trg_num_samples = trg_labels.numel()
@@ -265,12 +320,21 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             if self.with_self_challenging:
                 trg_features = self._filter(features, trg_mask)
+                print('base_recognizer; forward_train; trg_features.requires grad: ', trg_features.requires_grad)
+                print('base_recognizer; forward_train; trg_features.type', type(trg_features))
+                print('base_recognizer; forward_train; trg_features.size', trg_features.size())
                 trg_main_scores, _, _ = self._infer_head(
                     cl_head,
                     *([trg_features] + head_args),
                     labels=trg_labels.view(-1)
                 )
 
+                print('NNCF is enabled: ', is_in_nncf_tracing())
+
+                # TracedTensor cannot require gradient
+                # TODO: Find permanent solution that will replace RSC for NNCF
+                # TODO: Look into using no_nncf_trace
+                # if not is_in_nncf_tracing():
                 trg_features = rsc(
                     trg_features,
                     trg_main_scores,
@@ -335,26 +399,30 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         """Defines the computation performed at every call when evaluation and
         testing."""
 
-        imgs, _, head_args = self.reshape_input(imgs)
+        with no_nncf_trace():
 
-        y = self._extract_features_test(imgs)
+            imgs, _, head_args = self.reshape_input(imgs)
 
-        if self.multi_head:
-            assert dataset_id is not None
+            y = self._extract_features_test(imgs)
 
-            head_outs = []
-            for cls_head in self.cls_head:
-                head_y = cls_head(y, *head_args)
-                head_out = self._average_clip(head_y)
-                head_outs.append(head_out.cpu().numpy())
+            # Put no_nncf_trace here
 
-            out = []
-            dataset_id = dataset_id.view(-1).cpu().numpy()
-            for idx, head_id in enumerate(dataset_id):
-                out.extend(head_outs[head_id][idx].reshape([1, -1]))
-        else:
-            y = self.cls_head(y, *head_args)
-            out = self._average_clip(y).cpu().numpy()
+            if self.multi_head:
+                assert dataset_id is not None
+
+                head_outs = []
+                for cls_head in self.cls_head:
+                    head_y = cls_head(y, *head_args)
+                    head_out = self._average_clip(head_y)
+                    head_outs.append(head_out.cpu().numpy())
+
+                out = []
+                dataset_id = dataset_id.view(-1).cpu().numpy()
+                for idx, head_id in enumerate(dataset_id):
+                    out.extend(head_outs[head_id][idx].reshape([1, -1]))
+            else:
+                y = self.cls_head(y, *head_args)
+                out = self._average_clip(y).cpu().numpy()
 
         return out
 
