@@ -29,12 +29,24 @@ else:
     class_InitializingDataLoader = DummyInitializingDataLoader
 
 
+# Expects MMDetection data (list of list of images, augmented batch)
+# TODO: Either do nothing or do v.data without [0]
 class MMInitializeDataLoader(class_InitializingDataLoader):
     def get_inputs(self, dataloader_output):
+        # print(len(dataloader_output), flush=True)
+        # print(dataloader_output.items(), flush=True)
+        # print(dataloader_output, flush=True)
+        # assert False
         # redefined InitializingDataLoader because
         # of DataContainer format in mmdet
-        kwargs = {k: v.data[0] for k, v in dataloader_output.items()}
-        return (), kwargs
+        # kwargs = {k: v.data[0] for k, v in dataloader_output.items()}
+        # kwargs = {k: v.data for k, v in dataloader_output.items()}
+        # args = (dataloader_output['imgs'], dataloader_output.get('label'))
+        # print('get_inputs; dataloader_output.keys()', dataloader_output.keys(), flush=True)
+        # print('get_inputs; datatloader_output[dataset_id]', dataloader_output.get('dataset_id'), flush=True)
+        # assert False
+        return (), dataloader_output
+        # return args, {}
 
 
 def get_nncf_metadata():
@@ -179,10 +191,10 @@ def wrap_nncf_model(model,
             return get_fake_input_func(cfg, orig_img_shape=tuple([H, W, C]), device=device)
 
     def dummy_forward(model):
-        img = _get_fake_data_for_forward(cfg, nncf_config, get_fake_input_func)
-        # img = fake_data["img"]
+        fake_data = _get_fake_data_for_forward(cfg, nncf_config, get_fake_input_func)
+        img = fake_data["imgs"]
         img = nncf_model_input(img)
-        model(img)
+        model(img, return_loss=False)
 
     def wrap_inputs(args, kwargs):
         # during dummy_forward
@@ -195,8 +207,10 @@ def wrap_nncf_model(model,
             return args, kwargs
 
         # during model's forward
-        assert 'img' in kwargs, 'During model forward img must be in kwargs'
-        img = kwargs['img']
+        # print(args)
+        # print(kwargs, flush=True)
+        assert 'imgs' in kwargs, 'During model forward img must be in kwargs'
+        img = kwargs['imgs']
         if isinstance(img, list):
             assert len(img) == 1, 'Input list must have a length 1'
             assert torch.is_tensor(img[0]), 'Input for a model must be a tensor'
@@ -204,7 +218,9 @@ def wrap_nncf_model(model,
         else:
             assert torch.is_tensor(img), 'Input for a model must be a tensor'
             img = nncf_model_input(img)
-        kwargs['img'] = img
+        kwargs['imgs'] = img
+        # print(kwargs)
+        # print(kwargs.keys(), flush=True)
         return args, kwargs
 
     model.dummy_forward_fn = dummy_forward
