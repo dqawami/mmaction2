@@ -30,11 +30,8 @@ def get_fake_data(orig_img_shape, stream_sample_frames):
     return data
 
 
-# TODO: Make fake data class based on dummy_data text files
 def get_fake_input(cfg, orig_img_shape=(128, 128, 3), device='cuda'):
     test_pipeline = cfg.data.test.pipeline[2:]
-    # print(cfg.data.test.pipeline[0])
-    # print(test_pipeline)
     test_pipeline = Compose(test_pipeline)
     data = get_fake_data(orig_img_shape, stream_sample_frames=cfg.data.test.pipeline[0])
     data = test_pipeline(data)
