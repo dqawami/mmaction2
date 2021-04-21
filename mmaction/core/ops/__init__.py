@@ -6,7 +6,7 @@ from .kernelzed import KernelizedClassifier, kernel_prod
 from .nonlinearities import HSigmoid, HSwish
 from .dropout import Dropout, info_dropout
 from .gumbel_sigmoid import gumbel_sigmoid
-from .math import normalize
+from .math import normalize, Normalize
 from .losses import (CrossEntropy, NormalizedCrossEntropy, build_classification_loss, entropy, focal_loss,
                      MaxEntropyLoss)
 from .domain_generalization import rsc, RSC
@@ -23,7 +23,7 @@ __all__ = ['Conv2d', 'Conv3d',
            'HSigmoid', 'HSwish',
            'Dropout', 'info_dropout',
            'gumbel_sigmoid',
-           'normalize',
+           'normalize', 'Normalize',
            'CrossEntropy', 'NormalizedCrossEntropy', 'build_classification_loss',
            'MaxEntropyLoss', 'entropy', 'focal_loss',
            'rsc', 'RSC',

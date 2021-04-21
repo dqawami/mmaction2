@@ -134,20 +134,20 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 head.update_state(*args, **kwargs)
 
     @auto_fp16()
-    def _forward_module_train(self, module, x, losses, squeeze=False, **kwargs):
+    def _forward_module_train(self, module, x, losses, squeeze=False, squeeze_dim=-1, **kwargs):
         if module is None:
-            y = x
+            out = x
         elif hasattr(module, 'loss'):
-            y, extra_data = module(x, return_extra_data=True)
+            out, extra_data = module(x, return_extra_data=True)
             losses.update(module.loss(**extra_data, **kwargs))
         else:
-            y = module(x)
+            out = module(x)
 
-        if squeeze and isinstance(y, (list, tuple)):
-            assert len(y) == 1
-            y = y[0]
+        if squeeze and isinstance(out, (list, tuple)):
+            assert len(out) > 0
+            out = out[squeeze_dim]
 
-        return y
+        return out
 
     @auto_fp16()
     def _extract_features_test(self, imgs):
@@ -163,8 +163,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         y = self.backbone(imgs)
 
         if isinstance(y, (list, tuple)):
-            assert len(y) == 1
-            y = y[0]
+            assert len(y) > 0
+            y = y[-1]
 
         if self.spatial_temporal_module is not None:
             y = self.spatial_temporal_module(y)
@@ -234,11 +234,10 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         losses = dict()
 
         features = self._forward_module_train(
-            self.backbone, imgs, losses,
-            squeeze=True, attention_mask=attention_mask
+            self.backbone, imgs, losses, attention_mask=attention_mask
         )
         features = self._forward_module_train(
-            self.neck, features, losses,
+            self.neck, features, losses, squeeze=True, squeeze_dim=-1,
             labels=labels, dataset_id=dataset_id, num_clips=self.num_clips
         )
         features = self._forward_module_train(

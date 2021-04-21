@@ -4,7 +4,7 @@ import torch.nn as nn
 from mmcv.cnn import constant_init, kaiming_init
 
 from ..registry import NECKS
-from ...core.ops import conv_1x1x1_bn, HSwish, normalize, soft_dtw
+from ...core.ops import conv_1x1x1_bn, HSwish, Normalize, soft_dtw
 
 
 @NECKS.register_module()
@@ -13,27 +13,54 @@ class VideoAligner(nn.Module):
     Implementation of the paper: https://arxiv.org/abs/2103.17260
     """
 
+    merge_modes = ['concat', 'sum']
+
     def __init__(self, in_channels, spatial_size=7, temporal_size=1, hidden_size=512, embedding_size=256,
-                 smoothness=0.1, margin=2, window_size=1, reg_weight=1.0):
+                 smoothness=0.1, margin=2, window_size=1, reg_weight=1.0, merge_mode='concat'):
         super().__init__()
 
-        self.smoothness = smoothness
-        self.margin = margin
-        self.window_size = window_size
-        self.reg_weight = reg_weight
+        self.smoothness = float(smoothness)
+        assert self.smoothness > 0.0
+        self.margin = float(margin)
+        assert self.margin >= 0.0
+        self.window_size = int(window_size)
+        assert self.window_size > 0
+        self.reg_weight = float(reg_weight)
+        assert self.reg_weight > 0.0
+        self.hidden_size = int(hidden_size)
+        assert self.hidden_size > 0
+        self.embd_size = int(embedding_size)
+        assert self.embd_size > 0
+        self.merge_mode = merge_mode
+        assert self.merge_mode in self.merge_modes
 
-        self.in_channels = in_channels
-        self.spatial_size = spatial_size if not isinstance(spatial_size, int) else (spatial_size, spatial_size)
-        self.temporal_size = temporal_size
-        self.hidden_size = hidden_size
-        self.embd_size = embedding_size
+        self.in_channels = in_channels if isinstance(in_channels, (tuple, list)) else [in_channels]
+        self.temporal_size = temporal_size if isinstance(temporal_size, (tuple, list)) else [temporal_size]
+        assert len(self.in_channels) == len(self.temporal_size)
 
-        self.mapper = nn.Sequential(
-            *conv_1x1x1_bn(self.in_channels, self.hidden_size),
-            HSwish(),
-            *conv_1x1x1_bn(self.hidden_size, self.embd_size),
+        spatial_size = spatial_size if isinstance(spatial_size, (tuple, list)) else [spatial_size]
+        self.spatial_size = [ss if isinstance(ss, (tuple, list)) else (ss, ss) for ss in spatial_size]
+        assert len(self.spatial_size) == len(self.temporal_size)
+
+        self.trg_temporal_size = max(self.temporal_size)
+        self.mapper = nn.ModuleList([
+            nn.Sequential(
+                nn.AvgPool3d((1,) + self.spatial_size[input_id], stride=1, padding=0),
+                conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False),
+                nn.Upsample(size=(self.trg_temporal_size, 1, 1), mode='trilinear', align_corners=False)
+                if self.temporal_size[input_id] < self.trg_temporal_size else nn.Sequential(),
+                HSwish()
+            )
+            for input_id in range(len(self.in_channels))
+        ])
+
+        merged_channels = self.hidden_size
+        if self.merge_mode == 'concat':
+            merged_channels *= len(self.in_channels)
+        self.embedding = nn.Sequential(
+            conv_1x1x1_bn(merged_channels, self.embd_size, as_list=False),
+            Normalize(dim=1, p=2)
         )
-        self.spatial_pool = nn.AvgPool3d((1,) + self.spatial_size, stride=1, padding=0)
 
     def init_weights(self):
         for m in self.modules():
@@ -44,18 +71,27 @@ class VideoAligner(nn.Module):
             elif isinstance(m, nn.Parameter):
                 m.data.normal_()
 
-    def forward(self, x, return_extra_data=False):
+    def forward(self, inputs, return_extra_data=False):
         temporal_embd = None
         if self.training:
-            y = self.spatial_pool(x)
-            y = self.mapper(y)
-            temporal_embd = normalize(y, dim=1, p=2)
+            assert len(inputs) >= len(self.mapper)
+            internal_outs = [
+                self.mapper[input_id](inputs[input_id])
+                for input_id in range(len(self.mapper))
+            ]
+
+            if self.merge_mode == 'concat':
+                y = torch.cat(internal_outs, dim=1)
+            else:
+                y = sum(internal_outs)
+
+            temporal_embd = self.embedding(y)
 
         # returns the input unchanged
         if return_extra_data:
-            return x, dict(temporal_embd=temporal_embd)
+            return inputs, dict(temporal_embd=temporal_embd)
         else:
-            return x
+            return inputs
 
     def loss(self, temporal_embd=None, labels=None, dataset_id=None, num_clips=1):
         losses = dict()
@@ -90,7 +126,7 @@ class VideoAligner(nn.Module):
             valid_pairs_subset = valid_pairs[valid_samples_mask]
             valid_pairs_ids = torch.argmax(valid_pairs_subset.int(), dim=-1)
 
-        temporal_embd = temporal_embd.view(-1, self.embd_size, self.temporal_size)
+        temporal_embd = temporal_embd.view(-1, self.embd_size, self.trg_temporal_size)
         left_embd = temporal_embd[valid_samples_mask]
         right_embd = temporal_embd[valid_pairs_ids]
 

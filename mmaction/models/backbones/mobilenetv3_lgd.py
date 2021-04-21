@@ -181,6 +181,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
             if module_idx in self.out_ids:
                 local_outs.append(local_y)
 
+        assert len(local_outs) > 0
         local_outs = self._out_conv(local_outs, return_extra_data, enable_extra_modules, att_data)
 
         if return_extra_data:

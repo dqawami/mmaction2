@@ -456,9 +456,10 @@ class MobileNetV3_S3D(nn.Module):
         else:
             self.conv = None
 
-        self.out_ids = out_ids
-        if self.out_ids is None:
+        if out_ids is None:
             self.out_ids = [len(self.features) - 1]
+        else:
+            self.out_ids = [out_id + num_layers_before for out_id in out_ids]
 
     def forward(self, x, return_extra_data=False, enable_extra_modules=True):
         y = self._norm_input(x)
@@ -483,6 +484,7 @@ class MobileNetV3_S3D(nn.Module):
             if module_idx in self.out_ids:
                 outs.append(y)
 
+        assert len(outs) > 0
         outs = self._out_conv(outs, return_extra_data, enable_extra_modules, att_data)
 
         if return_extra_data:
@@ -526,9 +528,7 @@ class MobileNetV3_S3D(nn.Module):
 
     def _out_conv(self, outs, return_extra_data, enable_extra_modules, att_data):
         if self.conv is not None:
-            assert len(outs) == 1
-
-            y = self.conv(outs[0])
+            y = self.conv(outs[-1])
 
             if 'out_st_att' in self.attentions:
                 out_attention = self.attentions['out_st_att']
@@ -540,7 +540,7 @@ class MobileNetV3_S3D(nn.Module):
                 else:
                     y += y  # simulate residual block
 
-            outs = [y]
+            outs.append(y)
 
         return outs
 
