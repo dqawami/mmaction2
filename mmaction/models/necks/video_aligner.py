@@ -134,7 +134,7 @@ class VideoAligner(nn.Module):
         left_distances = (1.0 - torch.matmul(left_embd.transpose(1, 2), left_embd)).clamp_min(0.0)
         right_distances = (1.0 - torch.matmul(right_embd.transpose(1, 2), right_embd)).clamp_min(0.0)
 
-        main_losses = soft_dtw(pair_distances, self.smoothness, 0)
+        main_losses = soft_dtw(1e-2 + pair_distances, self.smoothness, 0)
         losses['loss/align'] = main_losses.mean()
 
         left_reg_loss = self._contrastive_idm_loss(left_distances, self.margin, self.window_size)

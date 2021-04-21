@@ -11,6 +11,7 @@ def compute_softdtw(D, gamma, bandwidth):
     B = D.shape[0]
     N = D.shape[1]
     M = D.shape[2]
+    scale = -1.0 / gamma
 
     R = np.ones((B, N + 2, M + 2)) * np.inf
     R[:, 0, 0] = 0
@@ -22,15 +23,16 @@ def compute_softdtw(D, gamma, bandwidth):
                 if 0 < bandwidth < np.abs(i - j):
                     continue
 
-                r0 = -R[b, i - 1, j - 1] / gamma
-                r1 = -R[b, i - 1, j] / gamma
-                r2 = -R[b, i, j - 1] / gamma
+                r0 = scale * R[b, i - 1, j - 1]
+                r1 = scale * R[b, i - 1, j]
+                r2 = scale * R[b, i, j - 1]
 
                 r_max = max(max(r0, r1), r2)
                 r_sum = np.exp(r0 - r_max) + np.exp(r1 - r_max) + np.exp(r2 - r_max)
                 soft_min = - gamma * (np.log(r_sum) + r_max)
 
                 R[b, i, j] = D[b, i - 1, j - 1] + soft_min
+
     return R
 
 
