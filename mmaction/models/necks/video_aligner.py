@@ -14,7 +14,7 @@ class VideoAligner(nn.Module):
     """
 
     def __init__(self, in_channels, spatial_size=7, temporal_size=1, hidden_size=512, embedding_size=256,
-                 smoothness=0.1, margin=2, window_size=1, reg_weight=0.1):
+                 smoothness=0.1, margin=2, window_size=1, reg_weight=1.0):
         super().__init__()
 
         self.smoothness = smoothness

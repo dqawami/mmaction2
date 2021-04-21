@@ -48,6 +48,10 @@ model = dict(
         spatial_size=7,
         hidden_size=256,
         embedding_size=128,
+        smoothness=0.1,
+        margin=2,
+        window_size=1,
+        reg_weight=1.0,
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
