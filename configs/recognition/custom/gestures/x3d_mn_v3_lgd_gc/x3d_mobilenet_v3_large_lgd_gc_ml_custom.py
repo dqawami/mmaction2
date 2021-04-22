@@ -32,22 +32,22 @@ model = dict(
         pool1_stride_t=1,
         # block ids       0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
-        temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1),
+        temporal_strides=(1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-        use_dropout=     (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        # use_dropout=     (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         mix_paths=       (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         pool_method='attention',
         channel_factor=3,
         use_temporal_avg_pool=True,
         out_conv=True,
-        internal_dropout=True,
-        dropout_cfg=dict(
-            dist='gaussian',
-            p=0.1,
-            mu=0.1,
-            sigma=0.03,
-        ),
+        # internal_dropout=True,
+        # dropout_cfg=dict(
+        #     dist='gaussian',
+        #     p=0.1,
+        #     mu=0.1,
+        #     sigma=0.03,
+        # ),
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
@@ -70,7 +70,7 @@ model = dict(
         reg_threshold=0.1,
         loss_cls=dict(
             type='AMSoftmaxLoss',
-            target_loss='sl',
+            target_loss='ce',
             scale_cfg=dict(
                 type='PolyScalarScheduler',
                 start_scale=30.0,
