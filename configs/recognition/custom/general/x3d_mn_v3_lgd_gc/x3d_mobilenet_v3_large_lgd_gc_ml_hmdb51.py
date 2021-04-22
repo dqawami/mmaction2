@@ -17,7 +17,7 @@ input_clip_length = 16
 frame_interval = 2
 
 # training settings
-enable_clip_mixing = True
+enable_clip_mixing = False
 num_train_clips = 2 if enable_clip_mixing else 1
 
 # model definition
@@ -103,7 +103,7 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=True, drop_p=0.33),
+    self_challenging=dict(enable=False, drop_p=0.33),
     clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips, weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9)
 )
