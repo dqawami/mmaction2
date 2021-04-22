@@ -144,6 +144,46 @@ class VideoAligner(nn.Module):
 
         return losses
 
+    # @staticmethod
+    # def compute_dtw(cost_matrix):
+    #     B = cost_matrix.shape[0]
+    #     N = cost_matrix.shape[1]
+    #     M = cost_matrix.shape[2]
+    #
+    #     directions = np.full([B, N + 1, M + 1], -1)
+    #     R = np.full([B, N + 1, M + 1], np.inf)
+    #     R[:, 0, 0] = 0
+    #
+    #     traces = []
+    #     for b in range(B):
+    #         for j in range(1, M + 1):
+    #             for i in range(1, N + 1):
+    #                 r0 = R[b, i - 1, j - 1]
+    #                 r1 = R[b, i - 1, j]
+    #                 r2 = R[b, i, j - 1]
+    #                 r_values = np.array([r0, r1, r2])
+    #
+    #                 R[b, i, j] = cost_matrix[b, i - 1, j - 1] + np.min(r_values)
+    #                 directions[b, i, j] = np.argmin(r_values)
+    #
+    #         i, j = N, M
+    #         trace = [(i, j)]
+    #         while i > 0 or j > 0:
+    #             direction = directions[b, i, j]
+    #             if direction == 0:
+    #                 i -= 1
+    #                 j -= 1
+    #             elif direction == 1:
+    #                 i -= 1
+    #             else:
+    #                 j -= 1
+    #
+    #             trace.append((i, j))
+    #
+    #         traces.append(trace)
+    #
+    #     return traces
+
     @staticmethod
     def _contrastive_idm_loss(dist_matrix, margin, window_size):
         with torch.no_grad():
