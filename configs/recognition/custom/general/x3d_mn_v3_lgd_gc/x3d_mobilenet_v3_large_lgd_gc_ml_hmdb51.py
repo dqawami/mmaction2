@@ -17,7 +17,7 @@ input_clip_length = 16
 frame_interval = 2
 
 # training settings
-enable_clip_mixing = True
+enable_clip_mixing = False
 num_train_clips = 2 if enable_clip_mixing else 1
 
 # model definition
@@ -36,11 +36,19 @@ model = dict(
         temporal_strides=(1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        use_dropout=     (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         mix_paths=       (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         pool_method='attention',
         channel_factor=3,
         use_temporal_avg_pool=True,
         out_conv=True,
+        internal_dropout=True,
+        dropout_cfg=dict(
+            dist='gaussian',
+            p=0.1,
+            mu=0.1,
+            sigma=0.03,
+        ),
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
@@ -95,7 +103,7 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=True, drop_p=0.33),
+    self_challenging=dict(enable=False, drop_p=0.33),
     clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips, weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9)
 )

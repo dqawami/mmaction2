@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from ...core.ops import HSwish, conv_1x1x1_bn
+from ...core.ops import HSwish, conv_1x1x1_bn, Dropout
 from ..registry import BACKBONES
 from .mobilenetv3_s3d import MobileNetV3_S3D
 
@@ -72,10 +72,13 @@ class UpsampleBlock(nn.Module):
 
 
 class GlobBlock(nn.Module):
-    def __init__(self, in_planes, out_planes, factor=3, norm='none'):
+    def __init__(self, in_planes, out_planes, factor=3,
+                 dropout_cfg=None, internal_dropout=True,
+                 norm='none'):
         super(GlobBlock, self).__init__()
 
         self.identity = in_planes == out_planes
+        self.internal_dropout = internal_dropout
 
         hidden_dim = int(factor * in_planes)
         layers = [
@@ -85,16 +88,32 @@ class GlobBlock(nn.Module):
         ]
         self.conv = nn.Sequential(*layers)
 
-    def forward(self, x):
-        if self.identity:
-            return x + self.conv(x)
+        if dropout_cfg is not None and self.identity:
+            self.dropout = Dropout(**dropout_cfg)
         else:
-            return self.conv(x)
+            self.dropout = None
+
+    def forward(self, x):
+        y = self.conv(x)
+
+        if self.dropout is not None and self.internal_dropout:
+            y = self.dropout(y, x)
+
+        out = x + y if self.identity else y
+
+        if self.dropout is not None and not self.internal_dropout:
+            out = self.dropout(out)
+
+        return out
 
 
 @BACKBONES.register_module()
 class MobileNetV3_LGD(MobileNetV3_S3D):
-    def __init__(self, mix_paths, pool_method='average', channel_factor=3, **kwargs):
+    def __init__(self,
+                 mix_paths,
+                 pool_method='average',
+                 channel_factor=3,
+                 **kwargs):
         super(MobileNetV3_LGD, self).__init__(**kwargs)
 
         assert len(mix_paths) == len(self.cfg)
@@ -134,6 +153,8 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
                 glob_channels,
                 self.channels_num[idx],
                 factor=self.channel_factor,
+                dropout_cfg=self.dropout_cfg if self.use_dropout[idx] > 0 else None,
+                internal_dropout=self.internal_dropout,
                 norm=self.weight_norm
             )
             for idx, glob_channels in zip(self.glob_idx, self.glob_channels_num[:-1])

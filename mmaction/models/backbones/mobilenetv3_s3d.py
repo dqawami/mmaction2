@@ -364,6 +364,8 @@ class MobileNetV3_S3D(nn.Module):
         self.bn_eval = bn_eval
         self.bn_frozen = bn_frozen
         self.weight_norm = weight_norm
+        self.dropout_cfg = dropout_cfg
+        self.internal_dropout = internal_dropout
 
         if input_bn:
             self.input_bn = nn.BatchNorm3d(num_input_layers)
