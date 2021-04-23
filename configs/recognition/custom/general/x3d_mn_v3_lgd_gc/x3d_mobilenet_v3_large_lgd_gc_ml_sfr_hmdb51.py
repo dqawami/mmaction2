@@ -49,7 +49,7 @@ model = dict(
         temporal_size=(16, 8, 4),
         spatial_size=(28, 14, 7),
         hidden_size=256,
-        reg_weight=1.0,
+        loss_weight=10.0,
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',

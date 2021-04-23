@@ -21,11 +21,11 @@ class ChannelReducer(nn.Module):
 
 @NECKS.register_module()
 class SelfFeatureRegularizer(nn.Module):
-    def __init__(self, in_channels, spatial_size=7, temporal_size=1, hidden_size=256, reg_weight=1.0):
+    def __init__(self, in_channels, spatial_size=7, temporal_size=1, hidden_size=256, loss_weight=1.0):
         super().__init__()
 
-        self.reg_weight = float(reg_weight)
-        assert self.reg_weight > 0.0
+        self.loss_weight = float(loss_weight)
+        assert self.loss_weight > 0.0
         self.hidden_size = int(hidden_size)
         assert self.hidden_size > 0
         self.scale = self.hidden_size ** (-0.5)
@@ -119,7 +119,7 @@ class SelfFeatureRegularizer(nn.Module):
         ]
 
         weighted_losses = attention * torch.cat(all_losses, dim=1)
-        losses['loss/sfr'] = torch.mean(torch.sum(weighted_losses, dim=1))
+        losses['loss/sfr'] = self.loss_weight * torch.mean(torch.sum(weighted_losses, dim=1))
 
         return losses
 
