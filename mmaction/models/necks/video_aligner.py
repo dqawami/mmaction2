@@ -93,7 +93,7 @@ class VideoAligner(nn.Module):
         else:
             return inputs
 
-    def loss(self, temporal_embd=None, labels=None, dataset_id=None, num_clips=1):
+    def loss(self, temporal_embd=None, labels=None, dataset_id=None, num_clips=1, **kwargs):
         losses = dict()
 
         if temporal_embd is None or labels is None:

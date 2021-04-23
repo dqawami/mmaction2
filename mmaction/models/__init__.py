@@ -19,7 +19,7 @@ from .spatial_temporal_modules import (AggregatorSpatialTemporalModule, AverageS
                                        BERTSpatialTemporalModule)
 from .params import FreezeLayers
 from .scalar_schedulers import ConstantScalarScheduler, PolyScalarScheduler, StepScalarScheduler
-from .necks import VideoAligner
+from .necks import VideoAligner, SelfFeatureRegularizer
 
 __all__ = [
     'BACKBONES', 'HEADS', 'RECOGNIZERS', 'SCALAR_SCHEDULERS', 'PARAMS_MANAGERS',
@@ -36,5 +36,5 @@ __all__ = [
     'BinaryLogisticRegressionLoss', 'BMN', 'BMNLoss', 'build_model',
     'OHEMHingeLoss', 'SSNLoss', 'ResNet3dCSN', 'ResNetTIN',
     'FreezeLayers', 'ConstantScalarScheduler', 'PolyScalarScheduler', 'StepScalarScheduler',
-    'BERTSpatialTemporalModule', 'VideoAligner',
+    'BERTSpatialTemporalModule', 'VideoAligner', 'SelfFeatureRegularizer',
 ]
