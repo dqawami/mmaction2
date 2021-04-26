@@ -303,8 +303,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             # clip mixing loss
             if self.with_clip_mixing:
+                clip_mixing_scale = self.train_cfg.clip_mixing.get('scale', cl_head.last_scale)
                 losses['loss/clip_mix' + str(head_id)] = self.clip_mixing_loss(
-                    trg_main_scores, trg_labels.view(-1), trg_norm_embd, cl_head.last_scale
+                    trg_main_scores, trg_labels.view(-1), trg_norm_embd, clip_mixing_scale
                 )
 
             if self.with_sample_filtering:
