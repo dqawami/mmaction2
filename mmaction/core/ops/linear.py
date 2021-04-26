@@ -103,7 +103,6 @@ class SymmetricalLayer(nn.Module):
 
         self.weight = nn.Parameter(torch.FloatTensor(2, self.in_features))
         self.weight.data.normal_()
-        # nn.init.uniform_(self.weight)
 
         steps = torch.arange(self.num_classes, dtype=torch.float32)
         thetas = 2.0 * math.pi / float(self.num_classes) * steps

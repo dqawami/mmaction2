@@ -64,11 +64,8 @@ model = dict(
             type='AMSoftmaxLoss',
             target_loss='ce',
             scale_cfg=dict(
-                type='PolyScalarScheduler',
-                start_scale=30.0,
-                end_scale=5.0,
-                power=1.2,
-                num_epochs=40.0,
+                type='ConstantScalarScheduler',
+                scale=32.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -199,7 +196,7 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=20,
     open_layers=['cls_head']
 )
 
@@ -210,13 +207,13 @@ lr_config = dict(
     min_lr_ratio=1e-2,
     alpha=1.5,
     fixed='constant',
-    fixed_epochs=5,
+    fixed_epochs=20,
     fixed_ratio=10.0,
     warmup='cos',
     warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 65
+total_epochs = 75
 
 # workflow
 workflow = [('train', 1)]
