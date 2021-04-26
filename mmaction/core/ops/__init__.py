@@ -1,7 +1,7 @@
 from .conv2d import Conv2d
 from .conv3d import Conv3d
 from .conv import conv_kxkxk_bn, conv_1xkxk_bn, conv_kx1x1_bn, conv_1x1x1_bn
-from .linear import AngleMultipleLinear
+from .linear import AngleMultipleLinear, SymmetricalLayer
 from .kernelzed import KernelizedClassifier, kernel_prod
 from .nonlinearities import HSigmoid, HSwish
 from .dropout import Dropout, info_dropout
@@ -18,7 +18,7 @@ from .soft_dtw import soft_dtw
 
 __all__ = ['Conv2d', 'Conv3d',
            'conv_kxkxk_bn', 'conv_1xkxk_bn', 'conv_kx1x1_bn', 'conv_1x1x1_bn',
-           'AngleMultipleLinear',
+           'AngleMultipleLinear', 'SymmetricalLayer',
            'KernelizedClassifier', 'kernel_prod',
            'HSigmoid', 'HSwish',
            'Dropout', 'info_dropout',

@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -84,3 +86,50 @@ class AngleMultipleLinear(nn.Module):
                 out_losses['loss/st_reg' + name] = self.reg_weight * losses.sum()
 
         return out_losses
+
+
+class SymmetricalLayer(nn.Module):
+    """
+    Init version: https://github.com/IoannisKansizoglou/Symmetrical-Feature-Space
+    """
+
+    def __init__(self, in_features, num_classes):
+        super().__init__()
+
+        self.in_features = in_features
+        assert in_features > 0
+        self.num_classes = num_classes
+        assert num_classes > 1
+
+        self.weight = nn.Parameter(torch.FloatTensor(2, self.in_features))
+        self.weight.data.normal_()
+        # nn.init.uniform_(self.weight)
+
+        steps = torch.arange(self.num_classes, dtype=torch.float32)
+        thetas = 2.0 * math.pi / float(self.num_classes) * steps
+        self.register_buffer('thetas', thetas)
+
+        eye_matrix = torch.eye(self.in_features)
+        self.register_buffer('eye_matrix', eye_matrix)
+
+    def _generate_centers(self, v1, v2):
+        n1 = normalize(v1, dim=0, p=2)
+
+        n2 = normalize(v2, dim=0, p=2)
+        n2 = normalize(n2 - torch.dot(n1, n2) * n1, dim=0, p=2)
+
+        ger_sub = torch.outer(n2, n1) - torch.outer(n1, n2)
+        ger_add = torch.outer(n1, n1) + torch.outer(n2, n2)
+        sin_thetas = torch.unsqueeze(torch.unsqueeze(torch.sin(self.thetas), dim=-1), dim=-1)
+        cos_thetas = torch.unsqueeze(torch.unsqueeze(torch.cos(self.thetas) - 1, dim=-1), dim=-1)
+        R = self.eye_matrix + ger_sub * sin_thetas + ger_add * cos_thetas
+
+        return torch.einsum('bij,j->bi', R, n1)
+
+    def forward(self, normalized_x):
+        normalized_x = normalized_x.view(-1, self.in_features)
+        centers = self._generate_centers(self.weight[0], self.weight[1])
+
+        scores = F.linear(normalized_x, centers)
+
+        return scores

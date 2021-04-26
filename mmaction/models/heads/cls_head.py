@@ -9,7 +9,7 @@ from mmcv.cnn import constant_init, kaiming_init
 
 from .base import BaseHead
 from ..registry import HEADS
-from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier
+from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier, SymmetricalLayer
 
 
 @HEADS.register_module()
@@ -88,6 +88,11 @@ class ClsHead(BaseHead):
             if classification_layer == 'linear':
                 self.fc_angular = AngleMultipleLinear(self.embd_size, self.num_classes, num_centers,
                                                       st_scale, reg_weight, reg_threshold)
+            elif classification_layer == 'symmetric':
+                assert num_centers == 1, 'Symmetric classifier does not support num_centers > 1'
+                assert not enable_class_mixing, 'Symmetric classifier does not support class mixing'
+
+                self.fc_angular = SymmetricalLayer(self.embd_size, self.num_classes)
             elif classification_layer == 'kernel':
                 assert not enable_class_mixing, 'Kernelized classifier does not support class mixing'
 
