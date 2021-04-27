@@ -21,6 +21,9 @@ class ChannelReducer(nn.Module):
 
 @NECKS.register_module()
 class SelfFeatureRegularizer(nn.Module):
+    """ Based on the paper: https://arxiv.org/abs/2103.07350
+    """
+
     def __init__(self, in_channels, spatial_size=7, temporal_size=1, hidden_size=256, loss_weight=1.0):
         super().__init__()
 

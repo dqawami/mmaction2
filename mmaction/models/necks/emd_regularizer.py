@@ -10,6 +10,9 @@ from ...core.ops import conv_1x1x1_bn, Normalize, normalize
 
 @NECKS.register_module()
 class EMDRegularizer(nn.Module):
+    """ Based on the paper: https://arxiv.org/abs/2103.07350
+    """
+
     def __init__(self, in_channels, hidden_size=256, loss_weight=1.0):
         super().__init__()
 
