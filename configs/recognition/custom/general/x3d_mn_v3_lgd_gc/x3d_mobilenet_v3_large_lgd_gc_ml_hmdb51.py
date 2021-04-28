@@ -97,7 +97,7 @@ model = dict(
 train_cfg = dict(
     self_challenging=dict(enable=True, drop_p=0.33),
     clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips,
-                     reweight_targets=True, scale=10.0, weight=0.2),
+                     reweight_targets=False, scale=10.0, weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9)
 )
 test_cfg = dict(
