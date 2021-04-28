@@ -5,7 +5,7 @@ import torch.nn as nn
 from mmcv.cnn import constant_init, kaiming_init
 
 from ..registry import NECKS
-from ...core.ops import conv_1x1x1_bn, Normalize, normalize
+from ...core.ops import conv_1x1x1_bn, normalize
 
 
 @NECKS.register_module()
@@ -29,7 +29,7 @@ class EMDRegularizer(nn.Module):
         self.mappers = nn.ModuleList([
             nn.Sequential(
                 conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False),
-                Normalize(dim=1, p=2)
+                nn.AvgPool3d(kernel_size=(3, 3, 3), stride=1, padding=1, count_include_pad=False)
             )
             for input_id in range(num_inputs)
         ])
@@ -89,9 +89,18 @@ class EMDRegularizer(nn.Module):
         num_nodes = features_a.size(2)
         cost_scale = 1.0 / float(num_nodes)
 
-        cost_matrix = 1.0 - torch.matmul(features_a.transpose(1, 2), features_b)
+        cost_matrix = self._get_cost_matrix(features_a, features_b)
         weights_a = self._get_weights(features_a, features_b)
         weights_b = self._get_weights(features_b, features_a)
+
+        # # debug code
+        # import matplotlib.pyplot as plt
+        # w = weights_a.view(-1, 4, 7, 7).detach().cpu().numpy()
+        # _, axs = plt.subplots(num_pairs, 4)
+        # for tt in range(num_pairs):
+        #     for jj in range(4):
+        #         axs[tt, jj].imshow(w[tt, jj])
+        # plt.show()
 
         pair_losses = []
         for pair_id in range(num_pairs):
@@ -104,6 +113,14 @@ class EMDRegularizer(nn.Module):
         losses['loss/emd_sfr'] = loss_weight * sum(pair_losses)
 
         return losses
+
+    @staticmethod
+    def _get_cost_matrix(features_a, features_b):
+        norm_a = normalize(features_a, dim=1, p=2)
+        norm_b = normalize(features_b, dim=1, p=2)
+        dist_matrix = 1.0 - torch.matmul(norm_a.transpose(1, 2), norm_b)
+
+        return dist_matrix.clamp_min(0.0)
 
     @staticmethod
     def _get_weights(ref, trg):
