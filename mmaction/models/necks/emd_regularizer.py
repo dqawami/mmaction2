@@ -93,21 +93,26 @@ class EMDRegularizer(nn.Module):
         weights_a = self._get_weights(features_a, features_b)
         weights_b = self._get_weights(features_b, features_a)
 
-        # # debug code
-        # import matplotlib.pyplot as plt
-        # w = weights_a.view(-1, 4, 7, 7).detach().cpu().numpy()
-        # _, axs = plt.subplots(num_pairs, 4)
-        # for tt in range(num_pairs):
-        #     for jj in range(4):
-        #         axs[tt, jj].imshow(w[tt, jj])
-        # plt.show()
-
         pair_losses = []
         for pair_id in range(num_pairs):
             flow = self._solve_emd(cost_matrix[pair_id], weights_a[pair_id], weights_b[pair_id])
 
             cost = torch.sum(flow * cost_matrix[pair_id])
             pair_losses.append(cost_scale * cost)
+
+            # # debug code
+            # with torch.no_grad():
+            #     heavy_nodes_weights, heavy_nodes_idx = torch.topk(weights_a[pair_id], k=10)
+            #     heavy_flow = flow[heavy_nodes_idx]
+            #     print(heavy_nodes_weights)
+            #
+            #     import matplotlib.pyplot as plt
+            #     flow_cpu = heavy_flow.view(-1, 4, 7, 7).cpu().numpy()
+            #     _, axs = plt.subplots(10, 4)
+            #     for tt in range(10):
+            #         for jj in range(4):
+            #             axs[tt, jj].imshow(flow_cpu[tt, jj])
+            #     plt.show()
 
         loss_weight = self.loss_weight / float(num_pairs)
         losses['loss/emd_sfr'] = loss_weight * sum(pair_losses)
