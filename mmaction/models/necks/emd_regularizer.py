@@ -94,7 +94,12 @@ class EMDRegularizer(nn.Module):
 
         pair_losses = []
         for pair_id in range(num_pairs):
-            flow = self._solve_emd(cost_matrix[pair_id], weights_a[pair_id], weights_b[pair_id])
+            local_weights_a = weights_a[pair_id]
+            local_weights_b = weights_b[pair_id]
+            if torch.sum(local_weights_a > 0.0) == 0 or torch.sum(local_weights_b > 0.0) == 0:
+                continue
+
+            flow = self._solve_emd(cost_matrix[pair_id], local_weights_a, local_weights_b)
 
             cost = torch.sum(flow * cost_matrix[pair_id])
             pair_losses.append(cost_scale * cost)
@@ -110,8 +115,11 @@ class EMDRegularizer(nn.Module):
             #         axs[1, jj].imshow(w_b[jj])
             #     plt.show()
 
-        loss_weight = self.loss_weight / float(num_pairs)
-        losses['loss/emd_sfr'] = loss_weight * sum(pair_losses)
+        if len(pair_losses) > 0:
+            loss_weight = self.loss_weight / float(len(pair_losses))
+            losses['loss/emd_sfr'] = loss_weight * sum(pair_losses)
+        else:
+            losses['loss/emd_sfr'] = torch.zeros([], dtype=features.dtype, device=features.device)
 
         return losses
 
