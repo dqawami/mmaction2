@@ -13,9 +13,13 @@ class EMDRegularizer(nn.Module):
     """ Based on the paper: https://arxiv.org/abs/2103.07350
     """
 
-    def __init__(self, in_channels, hidden_size=256, loss_weight=1.0):
+    modes = ['pairs', 'classmates', 'random']
+
+    def __init__(self, in_channels, mode='pairs', hidden_size=256, loss_weight=1.0):
         super().__init__()
 
+        self.mode = mode
+        assert self.mode in self.modes
         self.loss_weight = float(loss_weight)
         assert self.loss_weight > 0.0
         self.hidden_size = int(hidden_size)
@@ -28,8 +32,9 @@ class EMDRegularizer(nn.Module):
 
         self.mappers = nn.ModuleList([
             nn.Sequential(
-                conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False)
-                if self.in_channels[input_id] != self.hidden_size else nn.Sequential(),
+                conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False),
+                # conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False)
+                # if self.in_channels[input_id] != self.hidden_size else nn.Sequential(),
                 nn.AvgPool3d(kernel_size=(3, 3, 3), stride=1, padding=1, count_include_pad=False)
             )
             for input_id in range(num_inputs)
@@ -65,23 +70,16 @@ class EMDRegularizer(nn.Module):
         else:
             return inputs
 
-    def loss(self, features=None, num_clips=1, **kwargs):
+    def loss(self, features=None, **kwargs):
         losses = dict()
 
         if features is None:
             return losses
 
-        if num_clips > 1:
-            assert num_clips == 2
-
-            features_a = features[::num_clips]
-            features_b = features[1::num_clips]
-        else:
-            batch_size = features.size(0)
-            idx = torch.randperm(batch_size, device=features.device)
-
-            features_a = features[idx[:(batch_size // 2)]]
-            features_b = features[idx[(batch_size // 2):]]
+        features_a, features_b = self._split_features(features, self.mode, **kwargs)
+        if features_a is None or features_b is None:
+            losses['loss/emd_sfr'] = torch.zeros([], dtype=features.dtype, device=features.device)
+            return losses
 
         assert features_a.size(0) == features_b.size(0)
         num_pairs = features_a.size(0)
@@ -116,6 +114,52 @@ class EMDRegularizer(nn.Module):
         losses['loss/emd_sfr'] = loss_weight * sum(pair_losses)
 
         return losses
+
+    @staticmethod
+    def _split_features(features, mode, labels=None, dataset_id=None, num_clips=1, **kwargs):
+        if mode == 'pairs':
+            assert num_clips == 2
+
+            features_a = features[::num_clips]
+            features_b = features[1::num_clips]
+        elif mode == 'classmates':
+            with torch.no_grad():
+                batch_size = features.size(0)
+                batch_range = torch.arange(batch_size, device=labels.device)
+                top_diagonal_pairs = batch_range.view(-1, 1) < batch_range.view(1, -1)
+                same_class_pairs = labels.view(-1, 1) == labels.view(1, -1)
+                valid_pairs = same_class_pairs * top_diagonal_pairs
+
+                if dataset_id is not None:
+                    same_dataset_pairs = dataset_id.view(-1, 1) == dataset_id.view(1, -1)
+                    valid_pairs = same_dataset_pairs * valid_pairs
+
+                if num_clips > 1:
+                    instances_range = torch.arange(0, batch_size, num_clips, device=labels.device)
+                    instances_batch_range = instances_range.view(-1, 1).repeat(1, 2)
+                    different_instance_pairs = batch_range.view(-1, 1) < instances_batch_range.view(1, -1)
+                    valid_pairs = different_instance_pairs * valid_pairs
+
+                valid_samples_mask = torch.any(valid_pairs, dim=-1)
+
+            num_valid_pairs = torch.sum(valid_samples_mask, dim=0).item()
+            if num_valid_pairs > 0:
+                valid_pairs_subset = valid_pairs[valid_samples_mask]
+                valid_pairs_ids = torch.argmax(valid_pairs_subset.int(), dim=-1)
+
+                features_a = features[valid_samples_mask]
+                features_b = features[valid_pairs_ids]
+            else:
+                features_a, features_b = None, None
+        else:
+            batch_size = features.size(0)
+            assert batch_size % 2 == 0
+
+            idx = torch.randperm(batch_size, device=features.device)
+            features_a = features[idx[:(batch_size // 2)]]
+            features_b = features[idx[(batch_size // 2):]]
+
+        return features_a, features_b
 
     @staticmethod
     def _get_cost_matrix(features_a, features_b):
