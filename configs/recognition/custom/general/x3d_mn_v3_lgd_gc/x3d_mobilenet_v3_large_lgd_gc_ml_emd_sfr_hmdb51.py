@@ -45,8 +45,8 @@ model = dict(
     ),
     neck=dict(
         type='EMDRegularizer',
-        in_channels=(960,),
-        hidden_size=256,
+        in_channels=(160,),
+        hidden_size=128,
         loss_weight=1.0,
     ),
     reducer=dict(
@@ -102,7 +102,7 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=True, drop_p=0.33),
+    self_challenging=dict(enable=False, drop_p=0.33),
     clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips,
                      scale=10.0, weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9)

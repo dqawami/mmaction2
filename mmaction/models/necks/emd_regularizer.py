@@ -47,7 +47,7 @@ class EMDRegularizer(nn.Module):
         # assert len(inputs) == len(self.mappers) + 1
         # filtered_inputs = inputs[:-1]
 
-        filtered_inputs = [inputs[-1]]
+        filtered_inputs = [inputs[-2]]
         assert len(filtered_inputs) == len(self.mappers)
 
         features = None
