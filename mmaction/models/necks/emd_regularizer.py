@@ -104,17 +104,6 @@ class EMDRegularizer(nn.Module):
             cost = torch.sum(flow * cost_matrix[pair_id])
             pair_losses.append(cost_scale * cost)
 
-            # # debug code
-            # with torch.no_grad():
-            #     import matplotlib.pyplot as plt
-            #     w_a = weights_a[pair_id].view(4, 7, 7).cpu().numpy()
-            #     w_b = weights_b[pair_id].view(4, 7, 7).cpu().numpy()
-            #     _, axs = plt.subplots(2, 4)
-            #     for jj in range(4):
-            #         axs[0, jj].imshow(w_a[jj])
-            #         axs[1, jj].imshow(w_b[jj])
-            #     plt.show()
-
         if len(pair_losses) > 0:
             loss_weight = self.loss_weight / float(len(pair_losses))
             losses['loss/emd_sfr'] = loss_weight * sum(pair_losses)
