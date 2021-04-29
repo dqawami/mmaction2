@@ -209,7 +209,7 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=0,
     open_layers=['cls_head']
 )
 

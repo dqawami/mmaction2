@@ -123,8 +123,10 @@ class VideoAligner(nn.Module):
                 losses['loss/align_reg'] = torch.zeros([], dtype=temporal_embd.dtype, device=temporal_embd.device)
                 return losses
 
-            valid_pairs_subset = valid_pairs[valid_samples_mask]
-            valid_pairs_ids = torch.argmax(valid_pairs_subset.int(), dim=-1)
+            valid_pairs_subset = valid_pairs[valid_samples_mask].float()
+            rand_weights = 1.0 + torch.rand_like(valid_pairs_subset)
+            valid_pairs_subset_weights = valid_pairs_subset * rand_weights
+            valid_pairs_ids = torch.argmax(valid_pairs_subset_weights, dim=-1)
 
         temporal_embd = temporal_embd.view(-1, self.embd_size, self.trg_temporal_size)
         left_embd = temporal_embd[valid_samples_mask]

@@ -144,8 +144,10 @@ class EMDRegularizer(nn.Module):
 
             num_valid_pairs = torch.sum(valid_samples_mask, dim=0).item()
             if num_valid_pairs > 0:
-                valid_pairs_subset = valid_pairs[valid_samples_mask]
-                valid_pairs_ids = torch.argmax(valid_pairs_subset.int(), dim=-1)
+                valid_pairs_subset = valid_pairs[valid_samples_mask].float()
+                rand_weights = 1.0 + torch.rand_like(valid_pairs_subset)
+                valid_pairs_subset_weights = valid_pairs_subset * rand_weights
+                valid_pairs_ids = torch.argmax(valid_pairs_subset_weights, dim=-1)
 
                 features_a = features[valid_samples_mask]
                 features_b = features[valid_pairs_ids]
