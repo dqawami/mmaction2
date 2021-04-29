@@ -28,7 +28,8 @@ class EMDRegularizer(nn.Module):
 
         self.mappers = nn.ModuleList([
             nn.Sequential(
-                conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False),
+                conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False)
+                if self.in_channels[input_id] != self.hidden_size else nn.Sequential(),
                 nn.AvgPool3d(kernel_size=(3, 3, 3), stride=1, padding=1, count_include_pad=False)
             )
             for input_id in range(num_inputs)
@@ -99,6 +100,17 @@ class EMDRegularizer(nn.Module):
 
             cost = torch.sum(flow * cost_matrix[pair_id])
             pair_losses.append(cost_scale * cost)
+
+            # # debug code
+            # with torch.no_grad():
+            #     import matplotlib.pyplot as plt
+            #     w_a = weights_a[pair_id].view(4, 7, 7).cpu().numpy()
+            #     w_b = weights_b[pair_id].view(4, 7, 7).cpu().numpy()
+            #     _, axs = plt.subplots(2, 4)
+            #     for jj in range(4):
+            #         axs[0, jj].imshow(w_a[jj])
+            #         axs[1, jj].imshow(w_b[jj])
+            #     plt.show()
 
         loss_weight = self.loss_weight / float(num_pairs)
         losses['loss/emd_sfr'] = loss_weight * sum(pair_losses)

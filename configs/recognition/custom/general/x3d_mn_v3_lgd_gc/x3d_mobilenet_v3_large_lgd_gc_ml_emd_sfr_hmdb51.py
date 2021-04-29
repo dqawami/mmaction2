@@ -46,7 +46,7 @@ model = dict(
     neck=dict(
         type='EMDRegularizer',
         in_channels=(960,),
-        hidden_size=256,
+        hidden_size=960,
         loss_weight=1.0,
     ),
     reducer=dict(
