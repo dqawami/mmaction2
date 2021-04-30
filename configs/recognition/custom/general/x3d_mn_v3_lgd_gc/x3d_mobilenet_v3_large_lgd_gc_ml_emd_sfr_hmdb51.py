@@ -77,7 +77,7 @@ model = dict(
                 start_scale=30.0,
                 end_scale=5.0,
                 power=1.2,
-                num_epochs=40.0,
+                num_epochs=30.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -216,7 +216,7 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[55],
+    periods=[40],
     min_lr_ratio=1e-2,
     alpha=1.5,
     fixed='constant',
@@ -226,7 +226,7 @@ lr_config = dict(
     warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 65
+total_epochs = 50
 
 # workflow
 workflow = [('train', 1)]
