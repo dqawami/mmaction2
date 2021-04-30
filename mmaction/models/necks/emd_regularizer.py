@@ -33,8 +33,6 @@ class EMDRegularizer(nn.Module):
         self.mappers = nn.ModuleList([
             nn.Sequential(
                 conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False),
-                # conv_1x1x1_bn(self.in_channels[input_id], self.hidden_size, as_list=False)
-                # if self.in_channels[input_id] != self.hidden_size else nn.Sequential(),
                 nn.AvgPool3d(kernel_size=(3, 3, 3), stride=1, padding=1, count_include_pad=False)
             )
             for input_id in range(num_inputs)
