@@ -77,7 +77,7 @@ model = dict(
                 start_scale=30.0,
                 end_scale=5.0,
                 power=1.2,
-                num_epochs=45.0,
+                num_epochs=40.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -169,7 +169,8 @@ data = dict(
     videos_per_gpu=num_videos_per_gpu,
     workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
-        drop_last=True
+        drop_last=True,
+        num_instances_per_batch=2,
     ),
     shared=dict(
         type='VideoDataset',
@@ -216,7 +217,7 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[40],
+    periods=[55],
     min_lr_ratio=1e-2,
     alpha=1.5,
     fixed='constant',
@@ -226,7 +227,7 @@ lr_config = dict(
     warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 50
+total_epochs = 65
 
 # workflow
 workflow = [('train', 1)]

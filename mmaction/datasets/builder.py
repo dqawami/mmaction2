@@ -87,7 +87,7 @@ def build_dataloader(dataset,
                      seed=None,
                      drop_last=False,
                      pin_memory=True,
-                     enable_balancing=False,
+                     num_instances_per_batch=1,
                      **kwargs):
     """Build PyTorch DataLoader.
 
@@ -118,8 +118,9 @@ def build_dataloader(dataset,
     """
     rank, world_size = get_dist_info()
     if dist:
-        if enable_balancing:
-            sampler = BalancedDistributedSampler(dataset, world_size, rank, shuffle=shuffle, num_instances=2)
+        if num_instances_per_batch > 1:
+            sampler = BalancedDistributedSampler(dataset, world_size, rank, shuffle=shuffle,
+                                                 num_instances=num_instances_per_batch)
         else:
             sampler = DistributedSampler(dataset, world_size, rank, shuffle=shuffle)
 
