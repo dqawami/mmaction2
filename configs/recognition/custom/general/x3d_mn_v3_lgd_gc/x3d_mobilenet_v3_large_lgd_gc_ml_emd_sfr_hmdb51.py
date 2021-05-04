@@ -77,7 +77,7 @@ model = dict(
                 start_scale=30.0,
                 end_scale=5.0,
                 power=1.2,
-                num_epochs=30.0,
+                num_epochs=45.0,
             ),
             pr_product=False,
             margin_type='cos',
