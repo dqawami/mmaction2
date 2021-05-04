@@ -170,7 +170,6 @@ data = dict(
     workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
         drop_last=True,
-        num_instances_per_batch=2,
     ),
     shared=dict(
         type='VideoDataset',
