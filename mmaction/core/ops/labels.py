@@ -9,7 +9,7 @@ class PRISM(nn.Module):
     The original paper: https://arxiv.org/abs/2103.16047
     """
 
-    def __init__(self, num_classes, feature_length, buffer_size=1, margin=0.0):
+    def __init__(self, num_classes, feature_length, buffer_size=1, clear_margin=50.0, scale=10.0):
         super().__init__()
 
         self.num_classes = int(num_classes)
@@ -18,8 +18,10 @@ class PRISM(nn.Module):
         assert self.feature_length > 0
         self.buffer_size = int(buffer_size)
         assert self.buffer_size > 0
-        self.margin = float(margin)
-        assert self.margin >= 0.0
+        self.clear_margin = float(clear_margin)
+        assert self.clear_margin >= 0.0
+        self.scale = float(scale)
+        assert self.scale >= 0.0
 
         buffer_size = [self.num_classes, self.buffer_size, self.feature_length]
         self.register_buffer('feature_buffer', torch.zeros(buffer_size))
@@ -33,6 +35,7 @@ class PRISM(nn.Module):
 
         fixed_labels = torch.full_like(labels, -1)
 
+        enable_cleaning = all(s >= self.buffer_size for s in self.size)
         unique_labels = torch.unique(labels).detach().cpu().numpy()
         for class_id in unique_labels:
             if class_id < 0:
@@ -41,13 +44,17 @@ class PRISM(nn.Module):
             class_mask = labels == class_id
             class_features = features[class_mask]
 
-            if self.size[class_id] < self.buffer_size:
+            if enable_cleaning:
+                clear_mask = self._estimate_clear_features(class_features, class_id)
+                clear_features = class_features[clear_mask]
+
+                local_labels = torch.full_like(clear_mask, -1, dtype=labels.dtype)
+                local_labels[clear_mask] = class_id
+                fixed_labels[class_mask] = local_labels
+            else:
                 clear_features = class_features
 
                 fixed_labels[class_mask] = class_id
-            else:
-                valid_mask = self._estimate_clear_features(class_features, class_id)
-                clear_features = class_features[valid_mask]
 
             self._store_features(clear_features, class_id)
 
@@ -81,8 +88,15 @@ class PRISM(nn.Module):
         self.size[class_id] = min(self.size[class_id] + num_features, self.buffer_size)
 
     def _estimate_clear_features(self, features, class_id):
-        all_similarities = torch.matmul(self.feature_buffer.view(-1, self.feature_length),
-                                        torch.transpose(features, 0, 1))
-        all_similarities = all_similarities.view(self.num_classes, self.buffer_size, -1)
+        with torch.no_grad():
+            all_similarities = torch.matmul(self.feature_buffer.view(-1, self.feature_length),
+                                            torch.transpose(features, 0, 1))
+            all_similarities = all_similarities.view(self.num_classes, self.buffer_size, -1)
 
-        set_similarities = torch.max(all_similarities, dim=1)
+            set_similarities = torch.max(all_similarities, dim=1)
+            set_probs = torch.softmax(self.scale * set_similarities, dim=0)
+
+            clear_prob = set_probs[class_id].view(-1)
+            clear_mask = clear_prob > self.clear_margin
+
+        return clear_mask

@@ -1,5 +1,5 @@
 # global parameters
-num_videos_per_gpu = 12
+num_videos_per_gpu = 6
 num_workers_per_gpu = 3
 train_sources = 'hmdb51',
 test_sources = 'hmdb51',
