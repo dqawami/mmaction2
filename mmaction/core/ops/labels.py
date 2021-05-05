@@ -21,11 +21,11 @@ class PRISM(nn.Module):
         self.margin = float(margin)
         assert self.margin >= 0.0
 
-        buffer_size = [num_classes, self.buffer_size, self.feature_length]
+        buffer_size = [self.num_classes, self.buffer_size, self.feature_length]
         self.register_buffer('feature_buffer', torch.zeros(buffer_size))
 
-        self.start_pos = [0] * num_classes
-        self.size = [0] * num_classes
+        self.start_pos = [0] * self.num_classes
+        self.size = [0] * self.num_classes
 
     def forward(self, features, labels):
         features = features.view(-1, self.feature_length)
@@ -81,4 +81,8 @@ class PRISM(nn.Module):
         self.size[class_id] = min(self.size[class_id] + num_features, self.buffer_size)
 
     def _estimate_clear_features(self, features, class_id):
-        pass
+        all_similarities = torch.matmul(self.feature_buffer.view(-1, self.feature_length),
+                                        torch.transpose(features, 0, 1))
+        all_similarities = all_similarities.view(self.num_classes, self.buffer_size, -1)
+
+        set_similarities = torch.max(all_similarities, dim=1)
