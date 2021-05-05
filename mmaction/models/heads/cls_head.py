@@ -9,7 +9,8 @@ from mmcv.cnn import constant_init, kaiming_init
 
 from .base import BaseHead
 from ..registry import HEADS
-from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier, SymmetricalLayer
+from ...core.ops import (conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier,
+                         SymmetricalLayer, PRISM)
 
 
 @HEADS.register_module()
@@ -34,6 +35,7 @@ class ClsHead(BaseHead):
                  reg_weight=1.0,
                  enable_class_mixing=False,
                  class_mixing_alpha=0.1,
+                 label_cleaning_cfg=None,
                  enable_bias=False,
                  enable_bn=True,
                  **kwargs):
@@ -134,6 +136,11 @@ class ClsHead(BaseHead):
 
         self.enable_class_mixing = enable_class_mixing
         self.alpha_class_mixing = class_mixing_alpha
+
+        self.label_cleaner = None
+        if label_cleaning_cfg is not None:
+            self.label_cleaner = PRISM(num_classes=self.num_classes, feature_length=self.embd_size,
+                                       **label_cleaning_cfg)
 
     def init_weights(self):
         if self.with_embedding:
@@ -289,6 +296,10 @@ class ClsHead(BaseHead):
 
     def loss(self, main_cls_score, labels, norm_embd, name, extra_cls_score, **kwargs):
         losses = dict()
+
+        if self.label_cleaner is not None:
+            scale = self.head_loss.last_scale if hasattr(self.head_loss, 'last_scale') else None
+            labels = self.label_cleaner(norm_embd, labels, scale)
 
         pos_samples_mask = labels.view(-1) >= 0
         pos_labels = labels.view(-1)[pos_samples_mask]

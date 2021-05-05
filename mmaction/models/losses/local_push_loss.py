@@ -16,6 +16,9 @@ class LocalPushLoss(BaseWeightedLoss):
 
     def _forward(self, all_norm_embd, cos_theta, labels):
         pos_samples_mask = labels.view(-1) >= 0
+        if torch.sum(pos_samples_mask) == 0:
+            return torch.zeros([], dtype=all_norm_embd.dtype, device=all_norm_embd.device)
+
         pos_labels = labels.view(-1)[pos_samples_mask]
         pos_norm_embd = all_norm_embd[pos_samples_mask]
         pos_cos_theta = cos_theta[pos_samples_mask]
