@@ -69,11 +69,11 @@ model = dict(
         embd_size=256,
         reg_weight=1.0,
         reg_threshold=0.1,
-        label_cleaning_cfg=dict(
-            buffer_size=12,
-            min_num_updates=150,
-            clear_prob_margin=0.25,
-        ),
+        # label_cleaning_cfg=dict(
+        #     buffer_size=12,
+        #     min_num_updates=150,
+        #     clear_prob_margin=0.25,
+        # ),
         loss_cls=dict(
             type='AMSoftmaxLoss',
             target_loss='ce',
