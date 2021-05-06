@@ -45,7 +45,7 @@ model = dict(
     ),
     neck=dict(
         type='EMDRegularizer',
-        mode='pairs',
+        mode='classmates',
         in_channels=(960,),
         hidden_size=256,
         loss_weight=1.0,
