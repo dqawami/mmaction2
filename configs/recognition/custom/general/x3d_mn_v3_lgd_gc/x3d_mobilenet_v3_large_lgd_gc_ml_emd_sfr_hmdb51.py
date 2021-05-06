@@ -17,7 +17,7 @@ input_clip_length = 16
 frame_interval = 2
 
 # training settings
-enable_clip_mixing = False
+enable_clip_mixing = True
 num_train_clips = 2 if enable_clip_mixing else 1
 
 # model definition
@@ -45,7 +45,7 @@ model = dict(
     ),
     neck=dict(
         type='EMDRegularizer',
-        mode='classmates',
+        mode='pairs',
         in_channels=(960,),
         hidden_size=256,
         loss_weight=1.0,
@@ -170,7 +170,7 @@ data = dict(
     workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
         drop_last=True,
-        num_instances_per_batch=2,
+        num_instances_per_batch=None,
     ),
     shared=dict(
         type='VideoDataset',
