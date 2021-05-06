@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .math import normalize
 
 
 class PRISM(nn.Module):
-    """Filters labels according to the distance to set of centers.
+    """Filters labels according to the distance to set of class centers.
 
     The original paper: https://arxiv.org/abs/2103.16047
     """
@@ -101,13 +100,6 @@ class PRISM(nn.Module):
 
             set_similarities = torch.matmul(norm_class_centers, torch.transpose(features, 0, 1))
             set_probs = torch.softmax(scale * set_similarities, dim=0)
-
-            # all_similarities = torch.matmul(self.feature_buffer.view(-1, self.feature_length),
-            #                                 torch.transpose(features, 0, 1))
-            # all_similarities = all_similarities.view(self.num_classes, self.buffer_size, -1)
-            #
-            # set_similarities = torch.max(all_similarities, dim=1)[0]
-            # set_probs = torch.softmax(scale * set_similarities, dim=0)
 
             clear_prob = set_probs[class_id].view(-1)
             clear_mask = clear_prob > self.clear_prob_margin
