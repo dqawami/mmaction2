@@ -6,9 +6,8 @@ from mmcv.runner.hooks import HOOKS, Hook
 
 @HOOKS.register_module()
 class SampleInfoAggregatorHook(Hook):
-    def __init__(self, collect_epochs=20):
-        self.collect_epochs = collect_epochs
-        assert self.collect_epochs >= 0
+    def __init__(self):
+        pass
 
     def after_train_iter(self, runner):
         local_meta = runner.model.module.train_meta
@@ -19,8 +18,12 @@ class SampleInfoAggregatorHook(Hook):
 
         dataset = runner.data_loader.dataset
         dataset.enable_sample_filtering = True
-        dataset.enable_adaptive_mode = runner.epoch < self.collect_epochs
         dataset.update_meta_info(**sync_meta)
+
+    def after_epoch(self, runner):
+        dataset = runner.data_loader.dataset
+        if dataset.enable_sample_filtering:
+            runner.log_buffer.update({'filter_active_samples': dataset.get_filter_active_samples_ratio()})
 
     @staticmethod
     def _sync(data, rank, world_size):

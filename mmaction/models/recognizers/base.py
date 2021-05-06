@@ -250,6 +250,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         if self.with_sample_filtering:
             pred_labels = torch.zeros_like(labels.view(-1))
+            pred_conf = torch.zeros_like(labels.view(-1), dtype=features.dtype)
 
         heads = self.cls_head if self.multi_head else [self.cls_head]
         for head_id, cl_head in enumerate(heads):
@@ -311,22 +312,22 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             if self.with_sample_filtering:
                 with torch.no_grad():
-                    pred_labels[trg_mask] = torch.argmax(trg_main_scores, dim=1)
+                    pred_conf[trg_mask], pred_labels[trg_mask] = torch.max(trg_main_scores, dim=1)
 
         if self.regularizer is not None:
             losses['loss/reg'] = self.regularizer(self.backbone)
 
         if self.with_sample_filtering:
-            self._add_train_meta_info(pred_labels=pred_labels, **kwargs)
+            self._add_train_meta_info(pred_labels=pred_labels, pred_conf=pred_conf, **kwargs)
 
         return losses
 
     def _add_train_meta_info(self, **kwargs):
-        for meta_name in ['pred_labels', 'sample_idx', 'clip_starts', 'clip_ends']:
+        for meta_name in ['pred_labels', 'pred_conf', 'sample_idx', 'clip_starts', 'clip_ends']:
             assert meta_name in kwargs.keys(), f'There is no {meta_name} in meta info'
             assert kwargs[meta_name] is not None, f'The value of {meta_name} is None'
 
-            self.train_meta[meta_name] = kwargs[meta_name].clone().view(-1).detach()
+            self.train_meta[meta_name] = kwargs[meta_name].detach().clone().view(-1)
 
     def forward_test(self, imgs, dataset_id=None):
         """Defines the computation performed at every call when evaluation and

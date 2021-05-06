@@ -92,7 +92,6 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         self.records, self.label_maps = self._compress_labels(records)
 
         self.enable_sample_filtering = False
-        self.enable_adaptive_mode = False
 
     @abstractmethod
     def _load_annotations(self, ann_file, data_prefix):
@@ -225,7 +224,6 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         results['start_index'] = self.start_index
         results['sample_idx'] = idx
         results['sample_filtering'] = self.enable_sample_filtering
-        results['adaptive_mode'] = self.enable_adaptive_mode
 
         return self.pipeline(results)
 
@@ -355,6 +353,9 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         return out_ids
 
     def update_meta_info(self, **kwargs):
+        pass
+
+    def get_filter_active_samples_ratio(self):
         pass
 
     def filter(self, target_class_ids, target_dataset_id=0):

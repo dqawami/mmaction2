@@ -118,7 +118,9 @@ def train_model(model,
         runner.register_hook(build_params_manager(params_manager_cfg))
 
     if model.module.with_sample_filtering:
-        runner.register_hook(SampleInfoAggregatorHook(cfg.train_cfg.sample_filtering.collect_epochs))
+        runner.register_hook(SampleInfoAggregatorHook(
+            cfg.train_cfg.sample_filtering.collect_epochs
+        ))
 
     if validate:
         val_dataset = build_dataset(cfg.data, 'val', dict(test_mode=True))

@@ -50,10 +50,13 @@ class VideoDataset(RecognitionDataset):
                  num_classes=None,
                  start_index=0,
                  modality='RGB',
-                 logger=None):
+                 logger=None,
+                 filter_min_fraction=0.7):
         super().__init__(source, root_dir, ann_file, data_subdir, pipeline,
                          kpts_subdir, load_kpts, test_mode,
                          multi_class, num_classes, start_index, modality, logger)
+
+        self.filter_min_fraction = filter_min_fraction
 
     def _load_annotations(self, ann_file, data_prefix=None):
         """Load annotation file to get video information."""
@@ -81,17 +84,26 @@ class VideoDataset(RecognitionDataset):
                 video_infos.append(dict(
                     filename=filename,
                     label=onehot if self.multi_class else label,
-                    matched_pred=defaultdict(int),
+                    matched_weights=defaultdict(float),
+                    filter_ready=False,
                 ))
 
         return video_infos
 
-    def update_meta_info(self, pred_labels, sample_idx, clip_starts, clip_ends):
-        for idx, pred_label, start, end in zip(sample_idx, pred_labels, clip_starts, clip_ends):
+    def update_meta_info(self, pred_labels, pred_conf, sample_idx, clip_starts, clip_ends, total_frames):
+        for idx, pred_label, pred_weight, start, end, num_frames in \
+                zip(sample_idx, pred_labels, pred_conf, clip_starts, clip_ends, total_frames):
             video_info = self.records[idx]
             video_label = video_info['label']
-            video_matches = video_info['matched_pred']
+            video_matched_weights = video_info['matched_weights']
 
-            if video_label == pred_label:
-                for ii in range(start, end):
-                    video_matches[ii] += 1
+            weight = pred_weight if video_label == pred_label else -pred_weight
+            for ii in range(start, end):
+                video_matched_weights[ii] += weight
+
+            filter_ready = float(len(video_matched_weights)) / float(num_frames) > self.filter_min_fraction
+            video_info['filter_ready'] = filter_ready
+
+    def get_filter_active_samples_ratio(self):
+        num_active_samples = len([True for record in self.records if record['filter_ready']])
+        return float(num_active_samples) / float(len(self.records))
