@@ -1,5 +1,5 @@
 # global parameters
-num_videos_per_gpu = 6
+num_videos_per_gpu = 12
 num_workers_per_gpu = 3
 train_sources = 'hmdb51',
 test_sources = 'hmdb51',
@@ -17,7 +17,7 @@ input_clip_length = 16
 frame_interval = 2
 
 # training settings
-enable_clip_mixing = True
+enable_clip_mixing = False
 num_train_clips = 2 if enable_clip_mixing else 1
 
 # model definition
