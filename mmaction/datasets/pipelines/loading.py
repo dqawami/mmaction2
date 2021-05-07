@@ -92,10 +92,10 @@ class SampleFrames(object):
                                          np.zeros_like(frame_weights),
                                          1.0 + frame_weights)
 
-                frame_cumsum = np.cumsum(frame_counts)
+                frame_cumsum = np.cumsum(frame_weights)
                 frame_pad_cumsum = np.pad(frame_cumsum, (1, 0), 'constant')
-                window_counts = frame_cumsum[(ori_clip_len - 1):] - frame_pad_cumsum[:-ori_clip_len]
-                probs = window_counts / np.sum(window_counts)
+                window_weights = frame_cumsum[(ori_clip_len - 1):] - frame_pad_cumsum[:-ori_clip_len]
+                probs = window_weights / np.sum(window_weights)
 
                 clip_offsets = np.sort(
                     np.random.choice(np.arange(len(probs)), self.num_clips, p=probs)
