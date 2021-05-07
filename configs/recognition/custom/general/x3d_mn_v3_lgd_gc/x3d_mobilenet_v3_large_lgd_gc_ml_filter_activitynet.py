@@ -98,7 +98,7 @@ train_cfg = dict(
     clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips,
                      scale=10.0, weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9),
-    sample_filtering=dict(enable=True),
+    sample_filtering=dict(enable=True, warmup_epochs=1),
 )
 test_cfg = dict(
     average_clips='score'
@@ -175,7 +175,7 @@ data = dict(
     train=dict(
         source=train_sources,
         ann_file='train.txt',
-        filter_min_fraction=0.7,
+        filter_min_fraction=0.8,
         pipeline=train_pipeline,
     ),
     val=dict(

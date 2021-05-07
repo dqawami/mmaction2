@@ -119,7 +119,7 @@ def train_model(model,
 
     if model.module.with_sample_filtering:
         runner.register_hook(SampleInfoAggregatorHook(
-            cfg.train_cfg.sample_filtering.collect_epochs
+            cfg.train_cfg.sample_filtering.get('warmup_epochs', 0)
         ))
 
     if validate:

@@ -55,6 +55,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         bn_frozen (bool): Whether to disable backprop for all BN. Default: False.
     """
 
+    meta_fields = ['pred_labels', 'pred_conf', 'sample_idx', 'clip_starts', 'clip_ends', 'total_frames']
+
     def __init__(self,
                  backbone,
                  cls_head,
@@ -323,7 +325,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         return losses
 
     def _add_train_meta_info(self, **kwargs):
-        for meta_name in ['pred_labels', 'pred_conf', 'sample_idx', 'clip_starts', 'clip_ends']:
+        for meta_name in self.meta_fields:
             assert meta_name in kwargs.keys(), f'There is no {meta_name} in meta info'
             assert kwargs[meta_name] is not None, f'The value of {meta_name} is None'
 
