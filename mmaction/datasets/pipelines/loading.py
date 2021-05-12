@@ -48,7 +48,8 @@ class SampleFrames(object):
                  twice_sample=False,
                  out_of_bound_opt='loop',
                  test_mode=False,
-                 start_index=None):
+                 start_index=None,
+                 enable_negatives=False):
 
         self.clip_len = clip_len
         self.frame_interval = frame_interval
@@ -56,6 +57,7 @@ class SampleFrames(object):
         self.temporal_jitter = temporal_jitter
         self.twice_sample = twice_sample
         self.out_of_bound_opt = out_of_bound_opt
+        self.enable_negatives = enable_negatives
         self.test_mode = test_mode
         assert self.out_of_bound_opt in ['loop', 'repeat_last']
 
@@ -82,16 +84,20 @@ class SampleFrames(object):
         ori_clip_len = self.clip_len * self.frame_interval
         avg_interval = (num_frames - ori_clip_len + 1) // self.num_clips
 
+        frame_weights = None
+        if frames_meta_info is not None:
+            frame_weights = np.zeros([num_frames], dtype=np.float32)
+            for frame_id, frame_weight in frames_meta_info.items():
+                frame_weights[frame_id] += frame_weight
+
+            frame_weights = np.where(frame_weights < 0.0,
+                                     np.zeros_like(frame_weights),
+                                     1.0 + frame_weights)
+
+        is_positives = [True] * self.num_clips
+
         if avg_interval > 0:
-            if frames_meta_info is not None:
-                frame_weights = np.zeros([num_frames], dtype=np.float32)
-                for frame_id, frame_weight in frames_meta_info.items():
-                    frame_weights[frame_id] += frame_weight
-
-                frame_weights = np.where(frame_weights < 0.0,
-                                         np.zeros_like(frame_weights),
-                                         1.0 + frame_weights)
-
+            if frame_weights is not None:
                 frame_cumsum = np.cumsum(frame_weights)
                 frame_pad_cumsum = np.pad(frame_cumsum, (1, 0), 'constant')
                 window_weights = frame_cumsum[(ori_clip_len - 1):] - frame_pad_cumsum[:-ori_clip_len]
@@ -101,6 +107,7 @@ class SampleFrames(object):
                     probs = window_weights / sum_weights
                 else:
                     probs = np.full_like(window_weights, 1.0 / float(len(window_weights)))
+                    is_positives = [False] * self.num_clips
 
                 clip_offsets = np.sort(
                     np.random.choice(np.arange(len(probs)), self.num_clips, p=probs)
@@ -116,7 +123,12 @@ class SampleFrames(object):
         else:
             clip_offsets = np.zeros((self.num_clips, ), dtype=np.int)
 
-        return clip_offsets
+        if frame_weights is not None and avg_interval <= 0:
+            sum_weights = np.sum(frame_weights)
+            if sum_weights <= 0:
+                is_positives = [False] * self.num_clips
+
+        return clip_offsets, is_positives
 
     def _get_test_clips(self, num_frames):
         """Get clip offsets in test mode.
@@ -132,16 +144,21 @@ class SampleFrames(object):
         Returns:
             np.ndarray: Sampled frame indices in test mode.
         """
+
         ori_clip_len = self.clip_len * self.frame_interval
-        avg_interval = (num_frames - ori_clip_len + 1) / float(self.num_clips)
+
         if num_frames > ori_clip_len - 1:
+            avg_interval = (num_frames - ori_clip_len + 1) / float(self.num_clips)
             base_offsets = np.arange(self.num_clips) * avg_interval
             clip_offsets = (base_offsets + avg_interval / 2.0).astype(np.int)
             if self.twice_sample:
                 clip_offsets = np.concatenate([clip_offsets, base_offsets])
         else:
             clip_offsets = np.zeros((self.num_clips, ), dtype=np.int)
-        return clip_offsets
+
+        is_positives = [True] * self.num_clips
+
+        return clip_offsets, is_positives
 
     def _sample_clips(self, num_frames, frames_meta_info=None):
         """Choose clip offsets for the video in a given mode.
@@ -153,14 +170,11 @@ class SampleFrames(object):
             np.ndarray: Sampled frame indices.
         """
         if self.test_mode:
-            clip_offsets = self._get_test_clips(num_frames)
+            clip_offsets, is_positives = self._get_test_clips(num_frames)
         else:
-            clip_offsets = self._get_train_clips(num_frames, frames_meta_info)
+            clip_offsets, is_positives = self._get_train_clips(num_frames, frames_meta_info)
 
-        return clip_offsets
-
-    def _is_enough_meta_info(self, num_frames, matched_weights):
-        return float(len(matched_weights)) / float(num_frames) > self.filter_min_fraction
+        return clip_offsets, is_positives
 
     def __call__(self, results):
         """Perform the SampleFrames loading.
@@ -175,7 +189,7 @@ class SampleFrames(object):
         if results.get('sample_filtering', False) and results.get('filter_ready', False):
             frames_meta_info = results['matched_weights']
 
-        clip_offsets = self._sample_clips(total_frames, frames_meta_info)
+        clip_offsets, is_positives = self._sample_clips(total_frames, frames_meta_info)
         frame_inds = np.arange(self.clip_len)[None, :] * self.frame_interval
         frame_inds = np.concatenate(clip_offsets[:, None] + frame_inds)
 
@@ -206,10 +220,15 @@ class SampleFrames(object):
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = self.num_clips
-        results['label'] = [results['label']] * self.num_clips\
-            if self.num_clips > 1 else results['label']
         results['dataset_id'] = [results['dataset_id']] * self.num_clips\
             if self.num_clips > 1 else results['dataset_id']
+
+        original_label = results['label']
+        if self.enable_negatives:
+            clip_labels = [original_label if pl else -1 for pl in is_positives]
+        else:
+            clip_labels = [original_label] * self.num_clips
+        results['label'] = clip_labels if self.num_clips > 1 else clip_labels[0]
 
         return results
 

@@ -98,7 +98,7 @@ train_cfg = dict(
     clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips,
                      scale=10.0, weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9),
-    sample_filtering=dict(enable=True, warmup_epochs=1),
+    sample_filtering=dict(enable=True, warmup_epochs=0),
 )
 test_cfg = dict(
     average_clips='score'
@@ -116,7 +116,8 @@ train_pipeline = [
          clip_len=input_clip_length,
          frame_interval=frame_interval,
          num_clips=num_train_clips,
-         temporal_jitter=True),
+         temporal_jitter=True,
+         enable_negatives=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
