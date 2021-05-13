@@ -16,6 +16,11 @@ input_img_size = 224
 input_clip_length = 16
 frame_interval = 2
 
+# training settings
+enable_clip_mixing = True
+num_train_clips = 2 if enable_clip_mixing else 1
+
+# model definition
 model = dict(
     type='Recognizer3D',
     backbone=dict(
@@ -54,8 +59,6 @@ model = dict(
         in_channels=960,
         embedding=True,
         embd_size=256,
-        enable_rebalance=False,
-        rebalance_num_groups=3,
         reg_weight=1.0,
         reg_threshold=0.1,
         loss_cls=dict(
@@ -76,6 +79,8 @@ model = dict(
             conf_penalty_weight=0.085,
             filter_type='positives',
             top_k=None,
+            enable_class_weighting=False,
+            enable_adaptive_margins=False,
         ),
         losses_extra=dict(
             loss_lpush=dict(
@@ -90,9 +95,11 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=False, drop_p=0.33),
-    clip_mixing=dict(enable=False, mode='logits', weight=0.2),
-    loss_norm=dict(enable=False, gamma=0.9)
+    self_challenging=dict(enable=True, drop_p=0.33),
+    clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips,
+                     scale=10.0, weight=0.2),
+    loss_norm=dict(enable=False, gamma=0.9),
+    sample_filtering=dict(enable=False, warmup_epochs=1),
 )
 test_cfg = dict(
     average_clips=None
@@ -109,8 +116,9 @@ train_pipeline = [
     dict(type='SampleFrames',
          clip_len=input_clip_length,
          frame_interval=frame_interval,
-         num_clips=1,
-         temporal_jitter=True),
+         num_clips=num_train_clips,
+         temporal_jitter=True,
+         enable_negatives=False),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
@@ -155,7 +163,8 @@ data = dict(
     videos_per_gpu=num_videos_per_gpu,
     workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
-        drop_last=True
+        drop_last=True,
+        num_instances_per_batch=None,
     ),
     shared=dict(
         type='VideoDataset',
