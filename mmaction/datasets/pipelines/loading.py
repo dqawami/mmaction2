@@ -222,6 +222,11 @@ class SampleFrames(object):
         results['num_clips'] = self.num_clips
         results['dataset_id'] = [results['dataset_id']] * self.num_clips\
             if self.num_clips > 1 else results['dataset_id']
+        results['total_frames'] = [results['total_frames']] * self.num_clips \
+            if self.num_clips > 1 else results['total_frames']
+        if 'sample_idx' in results:
+            results['sample_idx'] = [results['sample_idx']] * self.num_clips \
+                if self.num_clips > 1 else results['sample_idx']
 
         original_label = results['label']
         if self.enable_negatives:
