@@ -117,7 +117,7 @@ train_pipeline = [
          frame_interval=frame_interval,
          num_clips=num_train_clips,
          temporal_jitter=True,
-         enable_negatives=True),
+         enable_negatives=False),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
