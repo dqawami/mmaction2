@@ -129,12 +129,14 @@ def wrap_nncf_model(model,
     Note that the parameter `get_fake_input_func` should be the function `get_fake_input`
     -- cannot import this function here explicitly
     """
-    from nncf import (NNCFConfig, create_compressed_model,
-                      register_default_init_args)
-    from nncf.dynamic_graph.input_wrapping import nncf_model_input
-
 
     check_nncf_is_enabled()
+
+    from nncf import (NNCFConfig, create_compressed_model,
+                      register_default_init_args)
+    from nncf.dynamic_graph.io_handling import nncf_model_input
+    from nncf.dynamic_graph.trace_tensor import TracedTensor
+
     pathlib.Path(cfg.work_dir).mkdir(parents=True, exist_ok=True)
     nncf_config = NNCFConfig(cfg.nncf_config)
     logger = get_root_logger(cfg.log_level)
@@ -205,7 +207,8 @@ def wrap_nncf_model(model,
     def wrap_inputs(args, kwargs):
         # during dummy_forward
         if not len(kwargs):
-            args[0][0] = nncf_model_input(args[0][0])
+            if not isinstance(args[0][0], TracedTensor):
+                args[0][0] = nncf_model_input(args[0][0])
             return args, kwargs
 
         # during building original graph
@@ -220,10 +223,12 @@ def wrap_nncf_model(model,
         if isinstance(img, list):
             assert len(img) == 1, 'Input list must have a length 1'
             assert torch.is_tensor(img[0]), 'Input for a model must be a tensor'
-            img[0] = nncf_model_input(img[0])
+            if not isinstance(img[0], TracedTensor):
+                img[0] = nncf_model_input(img[0])
         else:
             assert torch.is_tensor(img), 'Input for a model must be a tensor'
-            img = nncf_model_input(img)
+            if not isinstance(img, TracedTensor):
+                img = nncf_model_input(img)
         kwargs['imgs'] = img
         # print_dbg(kwargs)
         # print_dbg(kwargs.keys(), flush=True)
@@ -231,7 +236,9 @@ def wrap_nncf_model(model,
 
     model.dummy_forward_fn = dummy_forward
     # export_method = type(model).export
-    # export_method = type(model).export
+
+    # print('NNCF Config')
+    # print(nncf_config)
 
     # if 'log_dir' in nncf_config:
     #     os.makedirs(nncf_config['log_dir'], exist_ok=True)
@@ -240,6 +247,9 @@ def wrap_nncf_model(model,
                                                       dummy_forward_fn=dummy_forward,
                                                       wrap_inputs_fn=wrap_inputs,
                                                       resuming_state_dict=resuming_state_dict)
+
+    print('Returned compressed model')
+
     model = change_export_func_first_conv(model)
     # model.export = export_method.__get__(model)
 

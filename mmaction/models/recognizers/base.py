@@ -225,16 +225,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
     @staticmethod
     def _filter(x, mask):
-        # print_dbg('x', x)
-        print_dbg('base_recognizer; _filter; x.requires_grad', x.requires_grad)
-        print_dbg('base_recognizer; _filter; x.grad_fn', x.grad_fn)
         # if is_in_nncf_tracing():
         #     x.type(torch.Tensor)
         #     out.requires_grad = True
-        print_dbg('base_recognizer; _filter; x.type', x.type())
-        print_dbg('base_recognizer; _filter; x.requires_grad', x.requires_grad)
-        print_dbg('base_recognizer; _filter; x.grad_fn', x.grad_fn)
-        print_dbg('base_recognizer; _filter; mask.type', mask.type())
         if x is None:
             return None
         elif mask is None:
@@ -243,6 +236,13 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             print_dbg('x is tuple or list')
             out = [_x[mask] for _x in x]
         else:
+            print_dbg('x', x)
+            print_dbg('base_recognizer; _filter; x.requires_grad', x.requires_grad)
+            print_dbg('base_recognizer; _filter; x.grad_fn', x.grad_fn)
+            print_dbg('base_recognizer; _filter; x.type', x.type())
+            print_dbg('base_recognizer; _filter; x.requires_grad', x.requires_grad)
+            print_dbg('base_recognizer; _filter; x.grad_fn', x.grad_fn)
+            print_dbg('base_recognizer; _filter; mask.type', mask.type())
             out = x[mask]
             # out.requires_grad = True
             print_dbg('base_recognizer; _filter; x is not None and is not tuple or list')

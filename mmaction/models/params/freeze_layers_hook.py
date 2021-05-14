@@ -1,4 +1,5 @@
 from mmcv.runner.hooks import Hook
+import torch
 
 from ..registry import PARAMS_MANAGERS
 
@@ -29,6 +30,9 @@ class FreezeLayers(Hook):
     def open_all_layers(model):
         model.train()
         for p in model.parameters():
+            if p.dtype in (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool):
+                # only Tensors of floating point dtype can require gradients
+                continue
             p.requires_grad = True
 
     @staticmethod
@@ -37,6 +41,7 @@ class FreezeLayers(Hook):
             if any([open_substring in name for open_substring in open_layers]):
                 module.train()
                 for p in module.parameters():
+
                     p.requires_grad = True
             else:
                 module.eval()
