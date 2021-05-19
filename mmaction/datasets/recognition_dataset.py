@@ -156,6 +156,8 @@ class RecognitionDataset(BaseDataset, metaclass=ABCMeta):
         record['video_len'] = record['video_end'] - record['video_start']
         assert record['video_len'] > 0
 
+        record['total_frames'] = record['clip_len']
+
         return record
 
     @staticmethod
