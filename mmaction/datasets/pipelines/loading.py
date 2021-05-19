@@ -222,7 +222,7 @@ class SampleFrames(object):
         clip_starts = np.min(frame_inds, axis=1)
         clip_ends = np.max(frame_inds, axis=1) + 1
 
-        results['frame_inds'] = np.concatenate(frame_inds) + start_index
+        results['frame_inds'] = frame_inds + start_index
         results['clip_starts'] = clip_starts
         results['clip_ends'] = clip_ends
         results['clip_len'] = self.clip_len
@@ -638,24 +638,36 @@ class StreamSampleFrames(object):
         input_length, output_length = self._estimate_clip_lengths(frame_interval)
 
         start_index = results['start_index']
-        all_frame_inds, all_labels, all_dataset_ids = [], [], []
+        all_frame_inds, all_labels, all_dataset_ids, clip_starts, clip_ends = [], [], [], [], []
         for clip_id in range(self.num_clips):
-            frame_inds, is_positive = self._generate_indices(
+            clip_frame_inds, is_positive = self._generate_indices(
                 results, frame_interval, input_length, output_length
             )
 
-            frame_inds = np.array(frame_inds).astype(np.int)
-            frame_inds = np.where(frame_inds < 0, frame_inds, frame_inds + start_index)
-            all_frame_inds.append(frame_inds)
+            valid_clip_frame_inds = [cfi for cfi in clip_frame_inds if cfi >= 0]
+            assert len(valid_clip_frame_inds) > 0
+            clip_starts.append(np.min(valid_clip_frame_inds))
+            clip_ends.append(np.max(valid_clip_frame_inds) + 1)
+
+            clip_frame_inds = np.array(clip_frame_inds).astype(np.int)
+            clip_frame_inds = np.where(clip_frame_inds < 0, clip_frame_inds, clip_frame_inds + start_index)
+            all_frame_inds.append(clip_frame_inds)
 
             all_labels.append(results['label'] if is_positive else -1)
             all_dataset_ids.append(results['dataset_id'])
 
-        results['frame_inds'] = np.concatenate(all_frame_inds)
+        results['frame_inds'] = np.array(all_frame_inds)
+        results['clip_starts'] = clip_starts
+        results['clip_ends'] = clip_ends
         results['num_clips'] = self.num_clips
         results['clip_len'] = self.clip_len
         results['label'] = all_labels if self.num_clips > 1 else all_labels[0]
         results['dataset_id'] = all_dataset_ids if self.num_clips > 1 else all_dataset_ids[0]
+        results['total_frames'] = [results['total_frames']] * self.num_clips \
+            if self.num_clips > 1 else results['total_frames']
+        if 'sample_idx' in results:
+            results['sample_idx'] = [results['sample_idx']] * self.num_clips \
+                if self.num_clips > 1 else results['sample_idx']
 
         return results
 
