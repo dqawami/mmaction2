@@ -86,9 +86,14 @@ class SampleFrames(object):
 
         frame_weights = None
         if frames_meta_info is not None:
+            est_frame_weights = frames_meta_info['matched_weights']
+            start_shift = frames_meta_info['start_shift']
+
             frame_weights = np.zeros([num_frames], dtype=np.float32)
-            for frame_id, frame_weight in frames_meta_info.items():
-                frame_weights[frame_id] += frame_weight
+            for frame_id, frame_weight in est_frame_weights.items():
+                local_frame_id = frame_id - start_shift
+                if 0 <= local_frame_id < num_frames:
+                    frame_weights[local_frame_id] += frame_weight
 
             frame_weights = np.where(frame_weights < 0.0,
                                      np.zeros_like(frame_weights),
@@ -183,11 +188,15 @@ class SampleFrames(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        total_frames = results['total_frames']
+        total_frames = results['clip_len']
+        start_index = results['start_index'] + results['clip_start']
 
         frames_meta_info = None
         if results.get('sample_filtering', False) and results.get('filter_ready', False):
-            frames_meta_info = results['matched_weights']
+            frames_meta_info = dict(
+                matched_weights=results['matched_weights'],
+                start_shift=results['clip_start']
+            )
 
         clip_offsets, is_positives = self._sample_clips(total_frames, frames_meta_info)
         frame_inds = np.arange(self.clip_len)[None, :] * self.frame_interval
@@ -213,7 +222,6 @@ class SampleFrames(object):
         clip_starts = np.min(frame_inds, axis=1)
         clip_ends = np.max(frame_inds, axis=1) + 1
 
-        start_index = results['start_index']
         results['frame_inds'] = np.concatenate(frame_inds) + start_index
         results['clip_starts'] = clip_starts
         results['clip_ends'] = clip_ends
@@ -946,7 +954,21 @@ class PyAVInit(object):
         container = av.open(file_obj)
 
         results['video_reader'] = container
-        results['total_frames'] = container.streams.video[0].frames
+
+        num_frames = container.streams.video[0].frames
+        results['total_frames'] = num_frames
+
+        if 'clip_end' in results:
+            assert 0 <= results['clip_start'] < results['clip_end'] <= num_frames
+            assert 0 <= results['video_start'] < results['video_end'] <= num_frames
+        else:
+            results['clip_start'] = 0
+            results['clip_end'] = num_frames
+            results['video_start'] = 0
+            results['video_end'] = num_frames
+            results['clip_len'] = results['clip_end'] - results['clip_start']
+            results['video_len'] = results['video_end'] - results['video_start']
+            results['fps'] = container.streams.video[0].average_rate
 
         return results
 
@@ -1045,7 +1067,21 @@ class DecordInit(object):
         container = decord.VideoReader(file_obj, num_threads=self.num_threads)
 
         results['video_reader'] = container
-        results['total_frames'] = len(container)
+
+        num_frames = len(container)
+        results['total_frames'] = num_frames
+
+        if 'clip_end' in results:
+            assert 0 <= results['clip_start'] < results['clip_end'] <= num_frames
+            assert 0 <= results['video_start'] < results['video_end'] <= num_frames
+        else:
+            results['clip_start'] = 0
+            results['clip_end'] = num_frames
+            results['video_start'] = 0
+            results['video_end'] = num_frames
+            results['clip_len'] = results['clip_end'] - results['clip_start']
+            results['video_len'] = results['video_end'] - results['video_start']
+            results['fps'] = container.get_avg_fps()
 
         return results
 
@@ -1134,7 +1170,21 @@ class OpenCVInit(object):
         container = mmcv.VideoReader(new_path)
         results['new_path'] = new_path
         results['video_reader'] = container
-        results['total_frames'] = len(container)
+
+        num_frames = len(container)
+        results['total_frames'] = num_frames
+
+        if 'clip_end' in results:
+            assert 0 <= results['clip_start'] < results['clip_end'] <= num_frames
+            assert 0 <= results['video_start'] < results['video_end'] <= num_frames
+        else:
+            results['clip_start'] = 0
+            results['clip_end'] = num_frames
+            results['video_start'] = 0
+            results['video_end'] = num_frames
+            results['clip_len'] = results['clip_end'] - results['clip_start']
+            results['video_len'] = results['video_end'] - results['video_start']
+            results['fps'] = container.fps()
 
         return results
 

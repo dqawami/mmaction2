@@ -53,6 +53,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
                  kpts_subdir=None,
                  load_kpts=False,
                  test_mode=False,
+                 with_offset=False,
                  multi_class=False,
                  num_classes=None,
                  start_index=1,
@@ -76,6 +77,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
             assert osp.exists(kpts_prefix), f'Kpts root dir does not exist: {kpts_prefix}'
 
         self.test_mode = test_mode
+        self.with_offset = with_offset
         self.multi_class = multi_class
         self.num_classes = num_classes
         self.start_index = start_index
