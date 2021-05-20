@@ -1,13 +1,13 @@
-from os import makedirs, listdir, walk
+import subprocess
+from os import makedirs, listdir, walk, popen
 from os.path import exists, join, isfile, abspath
 from shutil import rmtree
 from argparse import ArgumentParser
 
-import cv2
 from tqdm import tqdm
 
 
-VIDEO_EXTENSIONS = 'avi', 'mp4', 'mov', 'webm'
+VIDEO_EXTENSIONS = 'avi', 'mp4', 'mov', 'webm', 'mkv'
 
 
 def create_dirs(dir_path, override=False):
@@ -24,7 +24,7 @@ def parse_relative_paths(data_dir, extensions):
     skip_size = len(data_dir) + 1
 
     relative_paths = []
-    for root, sub_dirs, files in tqdm(walk(data_dir)):
+    for root, sub_dirs, files in walk(data_dir):
         if len(sub_dirs) == 0 and len(files) > 0:
             valid_files = [f for f in files if f.split('.')[-1].lower() in extensions]
             if len(valid_files) > 0:
@@ -35,7 +35,7 @@ def parse_relative_paths(data_dir, extensions):
 
 def prepare_tasks(relative_paths, input_dir, output_dir, extensions):
     out_tasks = []
-    for relative_path in tqdm(relative_paths):
+    for relative_path in relative_paths:
         input_videos_dir = join(input_dir, relative_path)
         assert exists(input_videos_dir)
 
@@ -64,54 +64,102 @@ def prepare_tasks(relative_paths, input_dir, output_dir, extensions):
     return out_tasks
 
 
-def estimate_num_frames(tasks):
-    total_num_frames = 0
-    for video_path, _, _ in tqdm(tasks, desc='Counting num frames'):
-        video_capture = cv2.VideoCapture(video_path)
+def extract_properties(video_path):
+    result = popen(
+        f'ffprobe -hide_banner '
+        f'-loglevel error '
+        f'-select_streams v:0 '
+        f'-show_entries stream=width,height '
+        f'-of csv=p=0 {video_path}'
+    )
 
-        total_num_frames += int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_width, video_height = result.readline().rstrip().split(',')
+    video_width = int(video_width)
+    video_height = int(video_height)
 
-        video_capture.release()
+    return dict(
+        width=video_width,
+        height=video_height
+    )
 
-    return total_num_frames
 
-
-def dump_frames(video_path, out_dir, image_name_template, max_image_size, pbar):
-    video_capture = cv2.VideoCapture(video_path)
-    video_width = video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
-    video_height = video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    video_fps = video_capture.get(cv2.CAP_PROP_FPS)
-
-    max_side = max(video_width, video_height)
-    if max_side > max_image_size:
-        scale = float(max_image_size) / float(max_side)
-        trg_height, trg_width = int(video_height * scale), int(video_width * scale)
+def dump_frames(video_path, video_info, out_dir, image_name_template, max_image_size):
+    if video_info['width'] > video_info['height']:
+        command = ['ffmpeg',
+                   '-i', '"{}"'.format(video_path),
+                   '-vsync', '0',
+                   '-vf', '"scale={}:-2"'.format(max_image_size),
+                   '-q:v', '5',
+                   '"{}"'.format(join(out_dir, image_name_template)),
+                   '-y']
     else:
-        trg_height, trg_width = int(video_height), int(video_width)
+        command = ['ffmpeg',
+                   '-i', '"{}"'.format(video_path),
+                   '-vsync', '0',
+                   '-vf', '"scale=-2:{}"'.format(max_image_size),
+                   '-q:v', '5',
+                   '"{}"'.format(join(out_dir, image_name_template)),
+                   '-y']
+    command = ' '.join(command)
 
-    success = True
-    read_frame_id = 0
-    while success:
-        success, frame = video_capture.read()
-        if success:
-            read_frame_id += 1
+    try:
+        log = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        return None
 
-            resized_image = cv2.resize(frame, (trg_width, trg_height))
+    return str(log, 'utf-8')
 
-            out_image_path = join(out_dir, image_name_template.format(read_frame_id))
-            cv2.imwrite(out_image_path, resized_image)
 
-        pbar.update(1)
+def parse_video_info(log_message):
+    all_entries = []
+    for line in log_message.split('\n'):
+        if line.startswith('frame='):
+            line = line.strip().split('\rframe=')[-1].strip()
+            line = ' '.join([el for el in line.split(' ') if el])
+            line = line.replace('= ', '=')
+            line_parts = line.split(' ')
 
-    video_capture.release()
+            num_frames = int(line_parts[0].split('=')[-1])
+            assert num_frames > 0
 
-    return read_frame_id, video_fps
+            time_parts = [float(t) for t in line_parts[4].split('=')[-1].split(':')]
+            assert len(time_parts) == 3
+            duration = time_parts[0] * 3600.0 + time_parts[1] * 60.0 + time_parts[2]
+            assert duration > 0.0
+
+            frame_rate = num_frames / duration
+
+            all_entries.append((num_frames, frame_rate))
+
+    assert len(all_entries) > 0
+
+    return all_entries[-1]
+
+
+def process_task(input_video_path, output_video_dir, relative_path, image_name_template, max_image_size):
+    create_dirs(output_video_dir)
+
+    video_info = extract_properties(input_video_path)
+    log_message = dump_frames(input_video_path, video_info,
+                              output_video_dir, image_name_template,
+                              max_image_size)
+    if log_message is None:
+        rmtree(output_video_dir)
+        return None
+
+    video_num_frames, video_fps = parse_video_info(log_message)
+
+    return relative_path, video_num_frames, video_fps
 
 
 def dump_records(records, out_path):
     with open(out_path, 'w') as output_stream:
-        for rel_path, num_frames, fps in records:
-            if num_frames == 0:
+        for record in records:
+            if record is None:
+                continue
+
+            rel_path, num_frames, fps = record
+            if num_frames <= 0:
                 continue
 
             converted_record = rel_path, -1, 0, num_frames, 0, num_frames, fps
@@ -124,31 +172,25 @@ def main():
     parser.add_argument('--output_dir', '-o', type=str, required=True)
     parser.add_argument('--out_extension', '-ie', type=str, required=False, default='jpg')
     parser.add_argument('--max_image_size', '-ms', type=int, required=False, default=720)
-    parser.add_argument('--clear_dumped', '-c', action='store_true', required=False)
+    parser.add_argument('--override', action='store_true', required=False)
     args = parser.parse_args()
 
     assert exists(args.input_dir)
-
-    override = args.clear_dumped
-    create_dirs(args.output_dir, override=override)
-
-    image_name_template = '{:05}' + '.{}'.format(args.out_extension)
+    create_dirs(args.output_dir, override=args.override)
 
     print('\nPreparing tasks ...')
     relative_paths = parse_relative_paths(args.input_dir, VIDEO_EXTENSIONS)
     tasks = prepare_tasks(relative_paths, args.input_dir, args.output_dir, VIDEO_EXTENSIONS)
-    total_num_frames = estimate_num_frames(tasks)
-    print('Finished. Found {} videos ({} frames).'.format(len(tasks), total_num_frames))
+    print(f'Prepared {len(tasks)} tasks.')
 
     print('\nDumping frames ...')
+    image_name_template = f'%05d.{args.out_extension}'
     records = []
-    with tqdm(total=total_num_frames) as pbar:
-        for input_video_path, output_video_dir, relative_path in tasks:
-            create_dirs(output_video_dir)
-            video_num_frames, video_fps = dump_frames(
-                input_video_path, output_video_dir, image_name_template, args.max_image_size, pbar)
-
-            records.append((relative_path, video_num_frames, video_fps))
+    for task in tqdm(tasks, leave=False):
+        record = process_task(*task,
+                              image_name_template=image_name_template,
+                              max_image_size=args.max_image_size)
+        records.append(record)
     print('Finished.')
 
     out_annot_path = abspath('{}/../annot.txt'.format(args.output_dir))

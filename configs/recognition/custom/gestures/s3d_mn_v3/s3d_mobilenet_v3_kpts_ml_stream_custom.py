@@ -1,11 +1,16 @@
 # global parameters
+num_videos_per_gpu = 12
+num_workers_per_gpu = 3
+train_sources = 'common_selfcreated',
+test_sources = 'common_selfcreated',
+
 root_dir = 'data'
 work_dir = None
 load_from = None
 resume_from = None
 
 # model settings
-input_clip_length = 16
+input_clip_length = 8
 input_img_size = 224
 reset_layer_prefixes = ['cls_head']
 reset_layer_suffixes = None
@@ -22,15 +27,15 @@ model = dict(
         width_mult=1.0,
         pool1_stride_t=1,
         # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
-        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
+        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         use_st_att=      (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
         attention_cfg=dict(
             kernels=3,
-            add_temporal=True,
+            add_temporal=False,
             gumbel=True,
             enable_loss=True,
-            gt_regression=False,
+            gt_regression=True,
             tv_loss=True,
             reg_weight=0.1,
         ),
@@ -57,7 +62,7 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=100,
+        num_classes=12,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
@@ -68,22 +73,17 @@ model = dict(
         st_scale=10.0,
         reg_weight=1.0,
         reg_threshold=0.1,
-        enable_sampling=False,
-        adaptive_sampling=False,
-        sampling_angle_std=3.14 / 2 / 5,
-        enable_class_mixing=False,
-        class_mixing_alpha=0.2,
         loss_cls=dict(
             type='AMSoftmaxLoss',
-            target_loss='ce',
+            target_loss='sl',
             scale_cfg=dict(
                 type='PolyScalarScheduler',
                 start_scale=30.0,
                 end_scale=5.0,
                 power=1.2,
-                num_epochs=41.276,
+                num_epochs=40.0,
             ),
-            pr_product=True,
+            pr_product=False,
             margin_type='cos',
             margin=0.35,
             gamma=0.0,
@@ -108,7 +108,7 @@ model = dict(
 # model training and testing settings
 train_cfg = dict(
     self_challenging=dict(enable=True, drop_p=0.33),
-    clip_mixing=dict(enable=False, mode='logits', weight=0.2)
+    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -121,28 +121,45 @@ img_norm_cfg = dict(
     to_bgr=False
 )
 train_pipeline = [
-    dict(type='StreamSampleFrames', clip_len=input_clip_length, trg_fps=15, num_clips=1,
-         temporal_jitter=True, min_intersection=1.0),
+    dict(type='StreamSampleFrames',
+         clip_len=input_clip_length,
+         trg_fps=15,
+         num_clips=2,
+         temporal_jitter=True,
+         min_intersection=1.0),
     dict(type='RawFrameDecode'),
-    dict(type='Resize', scale=(-1, 256)),
-    dict(type='RandomRotate', delta=10, prob=0.5),
+    dict(type='GenerateKptsMask', sigma_scale=0.1, out_name='attention_mask'),
+    dict(type='Resize', scale=(-1, 256),
+         targets=['imgs', 'attention_mask'], interpolation=['bilinear', 'nearest']),
+    dict(type='RandomRotate', delta=10, prob=0.5, targets=['imgs', 'attention_mask']),
     dict(type='RatioPreservingCrop',
-         input_size=input_img_size, scale_limits=(1, 0.875)),
-    dict(type='Flip', flip_ratio=0.5),
-    dict(type='BlockDropout', scale=0.2, prob=0.1),
-    dict(type='PhotometricDistortion',
-         brightness_range=(65, 190),
-         contrast_range=(0.6, 1.4),
-         saturation_range=(0.7, 1.3),
-         hue_delta=18),
-    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
+         input_size=input_img_size, scale_limits=(1, 0.875),
+         targets=['imgs', 'attention_mask'], interpolation=['bilinear', 'nearest']),
+    dict(type='Flip', flip_ratio=0.5, targets=['imgs', 'attention_mask']),
+    dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
+    dict(type='ProbCompose',
+         transforms=[
+             dict(type='Empty'),
+             dict(type='PhotometricDistortion',
+                  brightness_range=(65, 190),
+                  contrast_range=(0.6, 1.4),
+                  saturation_range=(0.7, 1.3),
+                  hue_delta=18),
+             dict(type='CrossNorm',
+                  mean_std_file='mean_std_list.txt'),
+         ],
+         probs=[0.1, 0.45, 0.45]),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCTHW'),
-    dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
-    dict(type='ToTensor', keys=['imgs', 'label', 'dataset_id'])
+    dict(type='FormatShape', input_format='NCTHW', targets=['imgs', 'attention_mask']),
+    dict(type='Collect', keys=['imgs', 'label', 'dataset_id', 'attention_mask'], meta_keys=[]),
+    dict(type='ToTensor', keys=['imgs', 'label', 'dataset_id', 'attention_mask'])
 ]
 val_pipeline = [
-    dict(type='StreamSampleFrames', clip_len=input_clip_length, trg_fps=15, num_clips=1, test_mode=True),
+    dict(type='StreamSampleFrames',
+         clip_len=input_clip_length,
+         trg_fps=15,
+         num_clips=1,
+         test_mode=True),
     dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=input_img_size),
@@ -152,28 +169,31 @@ val_pipeline = [
     dict(type='ToTensor', keys=['imgs'])
 ]
 data = dict(
-    videos_per_gpu=14,
-    workers_per_gpu=2,
+    videos_per_gpu=num_videos_per_gpu,
+    workers_per_gpu=num_workers_per_gpu,
     train_dataloader=dict(
         drop_last=True
     ),
     shared=dict(
-        type='StreamDataset',
+        type='RawframeDataset',
         data_subdir='global_crops',
-        filename_tmpl='img_{:05d}.jpg'
+        filename_tmpl='{:05d}.jpg'
     ),
     train=dict(
-        source=['msasl'],
+        source=train_sources,
         ann_file='train.txt',
         pipeline=train_pipeline,
+        kpts_subdir='hand_kpts',
+        load_kpts=True,
+
     ),
     val=dict(
-        source=['msasl'],
-        ann_file='val.txt',
+        source=test_sources,
+        ann_file='test.txt',
         pipeline=val_pipeline
     ),
     test=dict(
-        source=['msasl'],
+        source=test_sources,
         ann_file='test.txt',
         pipeline=val_pipeline
     )
@@ -182,14 +202,14 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=2e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
 optimizer_config = dict(
     grad_clip=dict(
-        max_norm=40,
-        norm_type=2
+        method='adaptive',
+        clip=0.2,
     )
 )
 
@@ -202,15 +222,16 @@ params_config = dict(
 
 # learning policy
 lr_config = dict(
-    policy='customstep',
-    step=[30, 50],
-    gamma=0.1,
+    policy='customcos',
+    periods=[55],
+    min_lr_ratio=5e-3,
+    alpha=1.5,
     fixed='constant',
     fixed_epochs=5,
-    fixed_ratio=1.0,
+    fixed_ratio=5.0,
     warmup='linear',
     warmup_epochs=5,
-    warmup_ratio=1e-2,
+    warmup_ratio=5e-3,
 )
 total_epochs = 65
 
@@ -221,7 +242,7 @@ checkpoint_config = dict(
 )
 evaluation = dict(
     interval=1,
-    metrics=['mean_top_k_accuracy', 'ranking_mean_average_precision'],
+    metrics=['top_k_accuracy', 'mean_class_accuracy', 'ranking_mean_average_precision'],
     topk=(1, 5),
 )
 

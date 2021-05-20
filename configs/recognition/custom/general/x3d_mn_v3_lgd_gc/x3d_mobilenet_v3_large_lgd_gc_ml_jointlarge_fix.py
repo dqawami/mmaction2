@@ -1,19 +1,19 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'ucf101', 'hmdb51', 'activitynet200'
-test_sources = 'ucf101', 'hmdb51', 'activitynet200'
+train_sources = 'kinetics700', 'youtube-8m-segments'
+test_sources = 'kinetics700', 'youtube-8m-segments'
 
 root_dir = 'data'
 work_dir = None
 load_from = None
 resume_from = None
-reset_layer_prefixes = ['cls_head']
+reset_layer_prefixes = None
 reset_layer_suffixes = None
 
 # model settings
 input_img_size = 224
-clip_len = 16
+input_clip_length = 16
 frame_interval = 2
 
 model = dict(
@@ -104,7 +104,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='DecordInit'),
     dict(type='SampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          frame_interval=frame_interval,
          num_clips=1,
          temporal_jitter=True),
@@ -128,7 +128,6 @@ train_pipeline = [
                   mean_std_file='mean_std_list.txt'),
          ],
          probs=[0.1, 0.45, 0.45]),
-    dict(type='CrossNorm', mean_std_file='mean_std_list.txt', prob=0.9),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
@@ -137,7 +136,7 @@ train_pipeline = [
 val_pipeline = [
     dict(type='DecordInit'),
     dict(type='SampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          frame_interval=frame_interval,
          num_clips=1,
          test_mode=True),
@@ -166,12 +165,12 @@ data = dict(
     ),
     val=dict(
         source=test_sources,
-        ann_file='test.txt',
+        ann_file='val.txt',
         pipeline=val_pipeline
     ),
     test=dict(
         source=test_sources,
-        ann_file='test.txt',
+        ann_file='val.txt',
         pipeline=val_pipeline
     )
 )
@@ -179,14 +178,14 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=1e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
 optimizer_config = dict(
     grad_clip=dict(
-        method='adaptive',
-        clip=0.2,
+        max_norm=40,
+        norm_type=2
     )
 )
 
@@ -200,17 +199,13 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customstep',
-    step=[80, 150],
+    step=[5],
     gamma=0.1,
-    # policy='customcos',
-    # periods=[150],
-    # min_lr_ratio=1e-2,
-    # alpha=1.5,
     warmup='cos',
-    warmup_epochs=10,
+    warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 160
+total_epochs = 15
 
 # workflow
 workflow = [('train', 1)]

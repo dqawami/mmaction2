@@ -228,13 +228,14 @@ class GlobalContextBlock(nn.Module):
 class InvertedResidual_S3D(nn.Module):
     def __init__(self, in_planes, hidden_dim, out_planes, spatial_kernels, temporal_kernels,
                  spatial_stride, temporal_stride, use_se, use_hs,
-                 temporal_avg_pool=False, dropout_cfg=None, dw_temporal=True,
-                 norm='none', scale=None, center_weight=None):
+                 temporal_avg_pool=False, dropout_cfg=None, internal_dropout=True,
+                 dw_temporal=True, norm='none', scale=None, center_weight=None):
         super(InvertedResidual_S3D, self).__init__()
         assert spatial_stride in [1, 2]
 
         self.identity = spatial_stride == 1 and temporal_stride == 1 and in_planes == out_planes
         self.scale = scale
+        self.internal_dropout = internal_dropout
 
         if in_planes == hidden_dim:
             conv_layers = [
@@ -296,13 +297,18 @@ class InvertedResidual_S3D(nn.Module):
     def forward(self, x):
         y = self.conv(x)
 
-        if self.dropout is not None:
+        if self.dropout is not None and self.internal_dropout:
             y = self.dropout(y, x)
 
         if self.identity and self.scale is not None and self.scale != 1.0:
             y *= self.scale
 
-        return x + y if self.identity else y
+        out = x + y if self.identity else y
+
+        if self.dropout is not None and not self.internal_dropout:
+            out = self.dropout(out)
+
+        return out
 
 
 @BACKBONES.register_module()
@@ -327,7 +333,9 @@ class MobileNetV3_S3D(nn.Module):
                  out_conv=True,
                  out_attention=False,
                  out_ids=None,
+                 internal_dropout=True,
                  dropout_cfg=None,
+                 use_dropout=0,
                  weight_norm='none',
                  center_conv_weight=None,
                  sgs_cfg=None):
@@ -350,10 +358,14 @@ class MobileNetV3_S3D(nn.Module):
             if not isinstance(use_st_att, int) else (use_st_att,) * len(self.cfg)
         self.use_gcb = use_gcb \
             if not isinstance(use_gcb, int) else (use_gcb,) * len(self.cfg)
+        self.use_dropout = use_dropout \
+            if not isinstance(use_dropout, int) else (use_dropout,) * len(self.cfg)
 
         self.bn_eval = bn_eval
         self.bn_frozen = bn_frozen
         self.weight_norm = weight_norm
+        self.dropout_cfg = dropout_cfg
+        self.internal_dropout = internal_dropout
 
         if input_bn:
             self.input_bn = nn.BatchNorm3d(num_input_layers)
@@ -386,11 +398,12 @@ class MobileNetV3_S3D(nn.Module):
             spatial_stride = s
             temporal_stride = self.temporal_strides[layer_id]
             use_dw_temporal = self.use_dw_temporal[layer_id] > 0
+            module_dropout_cfg = dropout_cfg if self.use_dropout[layer_id] > 0 else None
 
             layers.append(residual_block(
                 input_channel, exp_size, output_channel, k, self.temporal_kernels[layer_id],
                 spatial_stride, temporal_stride, use_se, use_hs,
-                use_temporal_avg_pool, dropout_cfg,
+                use_temporal_avg_pool, module_dropout_cfg, internal_dropout,
                 use_dw_temporal, weight_norm, center_weight=center_conv_weight)
             )
 
@@ -445,9 +458,10 @@ class MobileNetV3_S3D(nn.Module):
         else:
             self.conv = None
 
-        self.out_ids = out_ids
-        if self.out_ids is None:
+        if out_ids is None:
             self.out_ids = [len(self.features) - 1]
+        else:
+            self.out_ids = [out_id + num_layers_before for out_id in out_ids]
 
     def forward(self, x, return_extra_data=False, enable_extra_modules=True):
         y = self._norm_input(x)
@@ -472,6 +486,7 @@ class MobileNetV3_S3D(nn.Module):
             if module_idx in self.out_ids:
                 outs.append(y)
 
+        assert len(outs) > 0
         outs = self._out_conv(outs, return_extra_data, enable_extra_modules, att_data)
 
         if return_extra_data:
@@ -515,9 +530,7 @@ class MobileNetV3_S3D(nn.Module):
 
     def _out_conv(self, outs, return_extra_data, enable_extra_modules, att_data):
         if self.conv is not None:
-            assert len(outs) == 1
-
-            y = self.conv(outs[0])
+            y = self.conv(outs[-1])
 
             if 'out_st_att' in self.attentions:
                 out_attention = self.attentions['out_st_att']
@@ -529,7 +542,7 @@ class MobileNetV3_S3D(nn.Module):
                 else:
                     y += y  # simulate residual block
 
-            outs = [y]
+            outs.append(y)
 
         return outs
 

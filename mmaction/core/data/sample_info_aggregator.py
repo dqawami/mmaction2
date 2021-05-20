@@ -6,11 +6,15 @@ from mmcv.runner.hooks import HOOKS, Hook
 
 @HOOKS.register_module()
 class SampleInfoAggregatorHook(Hook):
-    def __init__(self, collect_epochs=20):
-        self.collect_epochs = collect_epochs
-        assert self.collect_epochs >= 0
+    def __init__(self, warmup_epochs=0):
+        self.warmup_epochs = int(warmup_epochs)
+        assert self.warmup_epochs >= 0
 
     def after_train_iter(self, runner):
+        enable_sample_filtering = runner.epoch >= self.warmup_epochs
+        if not enable_sample_filtering:
+            return
+
         local_meta = runner.model.module.train_meta
         sync_meta = {
             meta_name: self._sync(meta_data, runner.rank, runner.world_size)
@@ -19,8 +23,10 @@ class SampleInfoAggregatorHook(Hook):
 
         dataset = runner.data_loader.dataset
         dataset.enable_sample_filtering = True
-        dataset.enable_adaptive_mode = runner.epoch < self.collect_epochs
         dataset.update_meta_info(**sync_meta)
+
+        samples_active_ratio = dataset.get_filter_active_samples_ratio()
+        runner.log_buffer.update({'filter_active_samples': samples_active_ratio})
 
     @staticmethod
     def _sync(data, rank, world_size):

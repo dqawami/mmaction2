@@ -11,7 +11,8 @@ from .loading import (DecordDecode, DecordInit, DenseSampleFrames,
                       OpenCVInit, PyAVDecode, PyAVInit, RawFrameDecode,
                       SampleFrames, SampleProposalFrames,
                       UntrimmedSampleFrames, StreamSampleFrames,
-                      GenerateKptsMask, SparseSampleFrames)
+                      GenerateKptsMask, SparseSampleFrames,
+                      LoadKpts)
 
 __all__ = [
     'SampleFrames', 'PyAVDecode', 'DecordDecode', 'DenseSampleFrames',
@@ -23,5 +24,5 @@ __all__ = [
     'DecordInit', 'OpenCVInit', 'PyAVInit', 'SampleProposalFrames',
     'UntrimmedSampleFrames', 'RawFrameDecode', 'StreamSampleFrames',
     'GenerateKptsMask', 'SparseSampleFrames', 'CrossNorm', 'Empty',
-    'ProbCompose',
+    'ProbCompose', 'LoadKpts',
 ]

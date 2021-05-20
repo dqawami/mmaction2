@@ -118,14 +118,19 @@ def train_model(model,
         runner.register_hook(build_params_manager(params_manager_cfg))
 
     if model.module.with_sample_filtering:
-        runner.register_hook(SampleInfoAggregatorHook(cfg.train_cfg.sample_filtering.collect_epochs))
+        runner.register_hook(SampleInfoAggregatorHook(
+            cfg.train_cfg.sample_filtering.get('warmup_epochs', 0)
+        ))
 
     if validate:
         val_dataset = build_dataset(cfg.data, 'val', dict(test_mode=True))
         runner.logger.info(f'Val datasets:\n{str(val_dataset)}')
 
+        num_test_videos_per_gpu = cfg.data['test_videos_per_gpu']\
+            if 'test_videos_per_gpu' in cfg.data else cfg.data.get('videos_per_gpu', {})
+
         dataloader_setting = dict(
-            videos_per_gpu=cfg.data.get('videos_per_gpu', {}),
+            videos_per_gpu=num_test_videos_per_gpu,
             workers_per_gpu=cfg.data.get('workers_per_gpu', {}),
             # cfg.gpus will be ignored if distributed
             num_gpus=len(cfg.gpu_ids),

@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
@@ -18,3 +19,15 @@ def normalize(x, dim, p=2, eps=1e-12):
         return OnnxLpNormalization.apply(x, dim, p, eps)
     else:
         return F.normalize(x, dim=dim, p=p, eps=eps)
+
+
+class Normalize(nn.Module):
+    def __init__(self, dim=1, p=2, eps=1e-12):
+        super().__init__()
+
+        self.dim = dim
+        self.p = p
+        self.eps = eps
+
+    def forward(self, x):
+        return normalize(x, self.dim, self.p, self. eps)

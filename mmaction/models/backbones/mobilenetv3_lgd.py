@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from ...core.ops import HSwish, conv_1x1x1_bn
+from ...core.ops import HSwish, conv_1x1x1_bn, Dropout
 from ..registry import BACKBONES
 from .mobilenetv3_s3d import MobileNetV3_S3D
 
@@ -20,26 +20,6 @@ class ContextPool3d(nn.Module):
 
         context = torch.matmul(x.view(-1, c, t * h * w), attention_map)
         out = context.view(-1, c, 1, 1, 1)
-
-        # attention_map = torch.softmax(keys.view(-1, 1, t, h * w), dim=3)
-        # out = torch.sum(x.view(-1, c, t, h * w) * attention_map, dim=3, keepdim=True)
-
-        # with torch.no_grad():
-        #     import matplotlib.pyplot as plt
-        #     att = attention_map[0].view(t, h, w)
-        #     min_value, max_value = att.min(), att.max()
-        #     norm_att = (att - min_value) / (max_value - min_value)
-        #     cpu_norm_att = norm_att.cpu().numpy()
-        #
-        #     ncols = int(t ** 0.5)
-        #     nrows = int(t / ncols)
-        #     if ncols * nrows < t:
-        #         ncols += 1
-        #     _, axs = plt.subplots(nrows, ncols, squeeze=False)
-        #
-        #     for ii in range(t):
-        #         axs[ii // ncols, ii % ncols].imshow(cpu_norm_att[ii], vmin=0, vmax=1)
-        #     plt.show()
 
         return out
 
@@ -92,10 +72,13 @@ class UpsampleBlock(nn.Module):
 
 
 class GlobBlock(nn.Module):
-    def __init__(self, in_planes, out_planes, factor=3, norm='none'):
+    def __init__(self, in_planes, out_planes, factor=3,
+                 dropout_cfg=None, internal_dropout=True,
+                 norm='none'):
         super(GlobBlock, self).__init__()
 
         self.identity = in_planes == out_planes
+        self.internal_dropout = internal_dropout
 
         hidden_dim = int(factor * in_planes)
         layers = [
@@ -105,16 +88,32 @@ class GlobBlock(nn.Module):
         ]
         self.conv = nn.Sequential(*layers)
 
-    def forward(self, x):
-        if self.identity:
-            return x + self.conv(x)
+        if dropout_cfg is not None and self.identity:
+            self.dropout = Dropout(**dropout_cfg)
         else:
-            return self.conv(x)
+            self.dropout = None
+
+    def forward(self, x):
+        y = self.conv(x)
+
+        if self.dropout is not None and self.internal_dropout:
+            y = self.dropout(y, x)
+
+        out = x + y if self.identity else y
+
+        if self.dropout is not None and not self.internal_dropout:
+            out = self.dropout(out)
+
+        return out
 
 
 @BACKBONES.register_module()
 class MobileNetV3_LGD(MobileNetV3_S3D):
-    def __init__(self, mix_paths, pool_method='average', channel_factor=3, **kwargs):
+    def __init__(self,
+                 mix_paths,
+                 pool_method='average',
+                 channel_factor=3,
+                 **kwargs):
         super(MobileNetV3_LGD, self).__init__(**kwargs)
 
         assert len(mix_paths) == len(self.cfg)
@@ -154,6 +153,8 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
                 glob_channels,
                 self.channels_num[idx],
                 factor=self.channel_factor,
+                dropout_cfg=self.dropout_cfg if self.use_dropout[idx] > 0 else None,
+                internal_dropout=self.internal_dropout,
                 norm=self.weight_norm
             )
             for idx, glob_channels in zip(self.glob_idx, self.glob_channels_num[:-1])
@@ -201,6 +202,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
             if module_idx in self.out_ids:
                 local_outs.append(local_y)
 
+        assert len(local_outs) > 0
         local_outs = self._out_conv(local_outs, return_extra_data, enable_extra_modules, att_data)
 
         if return_extra_data:

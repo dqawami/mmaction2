@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def confusion_matrix(y_pred, y_real, normalize=None):
+def _confusion_matrix(y_pred, y_real, normalize=None):
     """Compute confusion matrix.
 
     Args:
@@ -16,8 +16,7 @@ def confusion_matrix(y_pred, y_real, normalize=None):
         np.ndarray: Confusion matrix.
     """
     if normalize not in ['true', 'pred', 'all', None]:
-        raise ValueError("normalize must be one of {'true', 'pred', "
-                         "'all', None}")
+        raise ValueError("normalize must be one of {'true', 'pred', 'all', None}")
 
     if isinstance(y_pred, list):
         y_pred = np.array(y_pred)
@@ -48,16 +47,24 @@ def confusion_matrix(y_pred, y_real, normalize=None):
 
     with np.errstate(all='ignore'):
         if normalize == 'true':
-            confusion_mat = (
-                confusion_mat / confusion_mat.sum(axis=1, keepdims=True))
+            confusion_mat = (confusion_mat / confusion_mat.sum(axis=1, keepdims=True))
         elif normalize == 'pred':
-            confusion_mat = (
-                confusion_mat / confusion_mat.sum(axis=0, keepdims=True))
+            confusion_mat = (confusion_mat / confusion_mat.sum(axis=0, keepdims=True))
         elif normalize == 'all':
             confusion_mat = (confusion_mat / confusion_mat.sum())
         confusion_mat = np.nan_to_num(confusion_mat)
 
     return confusion_mat
+
+
+def confusion_matrix(scores, labels):
+    pred = np.argmax(scores, axis=1)
+    cm = _confusion_matrix(pred, labels, normalize='true')
+
+    np.set_printoptions(precision=1)
+    str_cm = str(100.0 * cm)
+
+    return str_cm
 
 
 def mean_class_accuracy(scores, labels):
@@ -71,7 +78,7 @@ def mean_class_accuracy(scores, labels):
         np.ndarray: Mean class accuracy.
     """
     pred = np.argmax(scores, axis=1)
-    cf_mat = confusion_matrix(pred, labels).astype(float)
+    cf_mat = _confusion_matrix(pred, labels).astype(float)
 
     cls_cnt = cf_mat.sum(axis=1)
     cls_hit = np.diag(cf_mat)
@@ -542,12 +549,16 @@ def average_precision_at_temporal_iou(ground_truth,
 
 
 def invalid_pred_info(scores, labels, k=5, scale=1.0):
-    pred = np.argsort(scores, axis=-1)[:, -k:]
+    scores = np.array(scores, dtype=np.float32)
+
+    all_pred = np.argsort(scores, axis=-1)[:, -k:]
     conf = np.max(softmax(scale * scores, dim=-1), axis=1)
+    pred = all_pred[:, 0]
 
-    invalid_mask = np.array([labels[i] not in pred[i] for i in range(len(labels))])
+    invalid_mask = np.array([labels[i] not in all_pred[i] for i in range(len(labels))])
 
-    invalid_ids = np.arange(len(pred))[invalid_mask]
+    invalid_ids = np.arange(len(all_pred))[invalid_mask]
     invalid_conf = conf[invalid_mask]
+    invalid_pred = pred[invalid_mask]
 
-    return invalid_ids, invalid_conf
+    return invalid_ids, invalid_conf, invalid_pred

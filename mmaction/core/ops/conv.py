@@ -35,9 +35,16 @@ def conv_kx1x1_bn(in_planes, out_planes, k, temporal_stride=1, groups=1,
     return layers if as_list else nn.Sequential(*layers)
 
 
-def conv_1x1x1_bn(in_planes, out_planes, as_list=True, norm='none', center_weight=None):
-    layers = [Conv3d(in_planes, out_planes, bias=False, kernel_size=1,
-                     padding=0, stride=1,
-                     normalization=norm, center_weight=center_weight),
-              nn.BatchNorm3d(out_planes)]
-    return layers if as_list else nn.Sequential(*layers)
+def conv_1x1x1_bn(in_planes, out_planes, as_list=True, norm='none', center_weight=None, bias=False, bn=True):
+    conv_layer = Conv3d(
+        in_planes, out_planes, bias=bias, kernel_size=1,
+        padding=0, stride=1,
+        normalization=norm, center_weight=center_weight
+    )
+
+    if bn:
+        layers = [conv_layer,
+                  nn.BatchNorm3d(out_planes)]
+        return layers if as_list else nn.Sequential(*layers)
+    else:
+        return conv_layer

@@ -9,7 +9,8 @@ from mmcv.cnn import constant_init, kaiming_init
 
 from .base import BaseHead
 from ..registry import HEADS
-from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier
+from ...core.ops import (conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier,
+                         SymmetricalLayer, PRISM)
 
 
 @HEADS.register_module()
@@ -34,6 +35,9 @@ class ClsHead(BaseHead):
                  reg_weight=1.0,
                  enable_class_mixing=False,
                  class_mixing_alpha=0.1,
+                 label_cleaning_cfg=None,
+                 enable_bias=False,
+                 enable_bn=True,
                  **kwargs):
         super(ClsHead, self).__init__(**kwargs)
 
@@ -75,15 +79,22 @@ class ClsHead(BaseHead):
                 assert not enable_class_mixing, 'Re-balancing does not support embd mixing'
 
                 self.fc_pre_angular = nn.ModuleList([
-                    conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
+                    conv_1x1x1_bn(self.in_channels, self.embd_size,
+                                  as_list=False, bias=enable_bias, bn=enable_bn)
                     for _ in range(rebalance_num_groups)
                 ])
             else:
-                self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
+                self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size,
+                                                    as_list=False, bias=enable_bias, bn=enable_bn)
 
             if classification_layer == 'linear':
                 self.fc_angular = AngleMultipleLinear(self.embd_size, self.num_classes, num_centers,
                                                       st_scale, reg_weight, reg_threshold)
+            elif classification_layer == 'symmetric':
+                assert num_centers == 1, 'Symmetric classifier does not support num_centers > 1'
+                assert not enable_class_mixing, 'Symmetric classifier does not support class mixing'
+
+                self.fc_angular = SymmetricalLayer(self.embd_size, self.num_classes)
             elif classification_layer == 'kernel':
                 assert not enable_class_mixing, 'Kernelized classifier does not support class mixing'
 
@@ -94,7 +105,8 @@ class ClsHead(BaseHead):
             if self.enable_rebalance:
                 self.internal_num_channels = int(1.3 * self.in_channels)
                 self.fc_pre_cls = nn.ModuleList([
-                    conv_1x1x1_bn(self.in_channels, self.internal_num_channels, as_list=False)
+                    conv_1x1x1_bn(self.in_channels, self.internal_num_channels,
+                                  as_list=False, bias=enable_bias, bn=enable_bn)
                     for _ in range(rebalance_num_groups)
                 ])
                 self.fc_cls_out = nn.Linear(self.internal_num_channels, self.num_classes)
@@ -124,6 +136,11 @@ class ClsHead(BaseHead):
 
         self.enable_class_mixing = enable_class_mixing
         self.alpha_class_mixing = class_mixing_alpha
+
+        self.label_cleaner = None
+        if label_cleaning_cfg is not None:
+            self.label_cleaner = PRISM(num_classes=self.num_classes, feature_length=self.embd_size,
+                                       **label_cleaning_cfg)
 
     def init_weights(self):
         if self.with_embedding:
@@ -241,6 +258,10 @@ class ClsHead(BaseHead):
                 norm_embd = normalize(unnorm_embd.view(-1, self.embd_size), dim=1)
 
                 if self.training:
+                    neg_samples_mask = labels.view(-1) < 0
+                    if neg_samples_mask.sum() > 0 and (self.enable_class_mixing or self.enable_sampling):
+                        raise NotImplementedError
+
                     if self.enable_class_mixing:
                         norm_class_centers = normalize(self.fc_angular.weight.permute(1, 0), dim=1)
                         norm_embd = self._mix_embd(
@@ -276,11 +297,22 @@ class ClsHead(BaseHead):
     def loss(self, main_cls_score, labels, norm_embd, name, extra_cls_score, **kwargs):
         losses = dict()
 
-        main_cls_loss = self.head_loss(main_cls_score, labels)
+        if self.label_cleaner is not None:
+            scale = self.head_loss.last_scale if hasattr(self.head_loss, 'last_scale') else None
+            labels = self.label_cleaner(norm_embd, labels, scale)
+
+        pos_samples_mask = labels.view(-1) >= 0
+        pos_labels = labels.view(-1)[pos_samples_mask]
+        pos_main_cls_score = main_cls_score[pos_samples_mask]
+
+        main_cls_loss = self.head_loss(pos_main_cls_score, pos_labels)
         if hasattr(self.head_loss, 'last_scale'):
             losses['scale/cls' + name] = self.head_loss.last_scale
 
         if self.enable_rebalance:
+            if pos_main_cls_score.size(0) < main_cls_score.size(0):
+                raise NotImplementedError('Negative mining is not implemented for thr rebalance loss')
+
             with torch.no_grad():
                 all_indexed_labels_mask = torch.zeros_like(main_cls_score, dtype=torch.float32)\
                     .scatter_(1, labels.view(-1, 1), 1)

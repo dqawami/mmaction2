@@ -1,11 +1,18 @@
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 from collections import defaultdict
+from os.path import exists, join
 
+import torch
 from mmcv.utils import print_log
 
 from ..core import (mean_class_accuracy, top_k_accuracy, mean_top_k_accuracy,
-                    mean_average_precision, ranking_mean_average_precision)
+                    mean_average_precision, ranking_mean_average_precision,
+                    invalid_pred_info, confusion_matrix)
 from .base import BaseDataset
+
+
+SIMPLE_RECORD_SIZE = 2
+DETAILED_RECORD_SIZE = 7
 
 
 class RecognitionDataset(BaseDataset, metaclass=ABCMeta):
@@ -14,17 +21,158 @@ class RecognitionDataset(BaseDataset, metaclass=ABCMeta):
 
     allowed_metrics = [
         'top_k_accuracy', 'mean_top_k_accuracy', 'mean_class_accuracy',
-        'mean_average_precision', 'ranking_mean_average_precision'
+        'mean_average_precision', 'ranking_mean_average_precision',
+        'confusion_matrix', 'invalid_info'
     ]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self,
+                 action_type_file=None,
+                 filter_min_fraction=0.8,
+                 **kwargs):
+        self.filter_min_fraction = filter_min_fraction
 
-    def _evaluate(self,
-                  results,
-                  metrics='top_k_accuracy',
-                  topk=(1, 5),
-                  logger=None):
+        super().__init__(**kwargs)
+
+        if action_type_file is not None:
+            assert isinstance(action_type_file, dict)
+            assert len(self.dataset_ids_map) == 1
+
+            source_name = self.dataset_ids_map[0]
+            if source_name in action_type_file:
+                action_type_file = join(self.root_dir, action_type_file[source_name])
+                action_type_map = self._load_action_type_map(action_type_file)
+                if action_type_map is not None:
+                    self.records = self._update_action_type_info(self.records, action_type_map)
+
+    @staticmethod
+    def _load_action_type_map(file_path):
+        if not exists(file_path):
+            return None
+
+        action_type_map = dict()
+        with open(file_path) as input_stream:
+            for line in input_stream:
+                line_parts = line.strip().split(':')
+                if len(line_parts) != 2:
+                    continue
+
+                action_type_map[int(line_parts[0])] = line_parts[1]
+
+        return action_type_map
+
+    @staticmethod
+    def _update_action_type_info(records, action_type_map):
+        for record in records:
+            label = record['label']
+            record['action_type'] = action_type_map[label]
+
+        return records
+
+    def _load_annotations(self, ann_file, data_prefix=None):
+        """Load annotation file to get video information."""
+
+        if ann_file.endswith('.json'):
+            return self.load_json_annotations()
+
+        video_infos = []
+        with open(ann_file, 'r') as input_stream:
+            for line in input_stream:
+                line_split = line.strip().split()
+
+                if self.multi_class or self.with_offset:
+                    record = self._parse_original_record(line_split[1:], self.multi_class,
+                                                         self.with_offset, self.num_classes)
+                elif len(line_split) == SIMPLE_RECORD_SIZE:
+                    record = self._parse_simple_record(line_split[1:])
+                elif len(line_split) == DETAILED_RECORD_SIZE:
+                    record = self._parse_detailed_record(line_split[1:])
+                else:
+                    continue
+
+                record.update(self._parse_data_source(line_split[0], data_prefix))
+                record.update(self._get_extra_info())
+
+                video_infos.append(record)
+
+        return video_infos
+
+    @staticmethod
+    def _parse_original_record(line_splits, multi_class, with_offset, num_classes):
+        record = dict()
+
+        idx = 0
+        if with_offset:
+            # idx for offset and total_frames
+            record['offset'] = int(line_splits[idx])
+            record['total_frames'] = int(line_splits[idx + 1])
+            idx += 2
+        else:
+            # idx for total_frames
+            record['total_frames'] = int(line_splits[idx])
+            idx += 1
+
+        record['clip_start'] = 0
+        record['clip_end'] = record['total_frames']
+        record['video_start'] = 0
+        record['video_end'] = record['total_frames']
+        record['fps'] = 30.0
+
+        # idx for label[s]
+        label = [int(x) for x in line_splits[idx:]]
+        assert len(label), 'missing label'
+        if multi_class:
+            assert num_classes is not None
+            label_vector = torch.zeros(num_classes)
+            label_vector[label] = 1.0
+            record['label'] = label_vector
+        else:
+            assert len(label) == 1
+            record['label'] = int(label[0])
+
+        return record
+
+    @staticmethod
+    def _parse_simple_record(line_splits):
+        record = dict(
+            label=int(line_splits[0]),
+        )
+
+        return record
+
+    @staticmethod
+    def _parse_detailed_record(line_splits):
+        record = dict(
+            label=int(line_splits[0]),
+            clip_start=int(line_splits[1]),
+            clip_end=int(line_splits[2]),
+            video_start=int(line_splits[3]),
+            video_end=int(line_splits[4]),
+            fps=float(line_splits[5]),
+        )
+
+        record['clip_len'] = record['clip_end'] - record['clip_start']
+        assert record['clip_len'] > 0
+
+        record['video_len'] = record['video_end'] - record['video_start']
+        assert record['video_len'] > 0
+
+        record['total_frames'] = record['clip_len']
+
+        return record
+
+    @staticmethod
+    def _get_extra_info():
+        return dict(
+            matched_weights=defaultdict(float),
+            filter_ready=False,
+            action_type='dynamic',
+        )
+
+    @abstractmethod
+    def _parse_data_source(self, data_source, data_prefix):
+        pass
+
+    def _evaluate(self, results, metrics='top_k_accuracy', topk=(1, 5), logger=None):
         """Evaluation in action recognition dataset.
 
         Args:
@@ -119,4 +267,37 @@ class RecognitionDataset(BaseDataset, metaclass=ABCMeta):
                 print_log(log_msg, logger=logger)
                 continue
 
+            if metric == 'confusion_matrix':
+                cm = confusion_matrix(results, gt_labels)
+                eval_results[f'val/{name}/conf_matrix'] = cm
+                log_msg = f'\n{name}/conf_matrix evaluated'
+                print_log(log_msg, logger=logger)
+                continue
+
+            if metric == 'invalid_info':
+                invalid_ids, invalid_conf, invalid_pred = invalid_pred_info(results, gt_labels, k=1)
+                eval_results[f'val/{name}/invalid_info'] = \
+                    dict(ids=invalid_ids, conf=invalid_conf, pred=invalid_pred)
+                log_msg = f'\n{name}/invalid is collected'
+                print_log(log_msg, logger=logger)
+                continue
+
         return eval_results
+
+    def update_meta_info(self, pred_labels, pred_conf, sample_idx, clip_starts, clip_ends, total_frames):
+        for idx, pred_label, pred_weight, start, end, num_frames in \
+                zip(sample_idx, pred_labels, pred_conf, clip_starts, clip_ends, total_frames):
+            video_info = self.records[idx]
+            video_label = video_info['label']
+            video_matched_weights = video_info['matched_weights']
+
+            weight = pred_weight if video_label == pred_label else -pred_weight
+            for ii in range(start, end):
+                video_matched_weights[ii] += weight
+
+            filter_ready = float(len(video_matched_weights)) / float(num_frames) > self.filter_min_fraction
+            video_info['filter_ready'] = filter_ready
+
+    def get_filter_active_samples_ratio(self):
+        num_active_samples = len([True for record in self.records if record['filter_ready']])
+        return float(num_active_samples) / float(len(self.records))

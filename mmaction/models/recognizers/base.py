@@ -55,10 +55,13 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         bn_frozen (bool): Whether to disable backprop for all BN. Default: False.
     """
 
+    meta_fields = ['pred_labels', 'pred_conf', 'sample_idx', 'clip_starts', 'clip_ends', 'total_frames']
+
     def __init__(self,
                  backbone,
                  cls_head,
                  reducer=None,
+                 neck=None,
                  class_sizes=None,
                  class_maps=None,
                  train_cfg=None,
@@ -90,13 +93,18 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.backbone = builder.build_backbone(backbone)
         self.spatial_temporal_module = builder.build_reducer(reducer)
         self.cls_head = builder.build_head(cls_head, class_sizes)
+        self.neck = builder.build_neck(neck)
 
+        self.num_clips = 1
         if self.with_clip_mixing:
             self.clip_mixing_loss = builder.build_loss(dict(
                 type='ClipMixingLoss',
-                mode=train_cfg.clip_mixing.mode,
-                loss_weight=train_cfg.clip_mixing.weight
+                num_clips=train_cfg.clip_mixing.num_clips,
+                mode=train_cfg.clip_mixing.get('mode', 'logits'),
+                reweight_targets=train_cfg.clip_mixing.get('reweight_targets', False),
+                loss_weight=train_cfg.clip_mixing.get('weight', 1.0)
             ))
+            self.num_clips = train_cfg.clip_mixing.num_clips
 
         self.losses_meta = None
         if self.with_loss_norm:
@@ -129,20 +137,20 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 head.update_state(*args, **kwargs)
 
     @auto_fp16()
-    def _forward_module_train(self, module, x, losses, squeeze=False, **kwargs):
+    def _forward_module_train(self, module, x, losses, squeeze=False, squeeze_dim=-1, **kwargs):
         if module is None:
-            y = x
+            out = x
         elif hasattr(module, 'loss'):
-            y, extra_data = module(x, return_extra_data=True)
+            out, extra_data = module(x, return_extra_data=True)
             losses.update(module.loss(**extra_data, **kwargs))
         else:
-            y = module(x)
+            out = module(x)
 
-        if squeeze and isinstance(y, (list, tuple)):
-            assert len(y) == 1
-            y = y[0]
+        if squeeze and isinstance(out, (list, tuple)):
+            assert len(out) > 0
+            out = out[squeeze_dim]
 
-        return y
+        return out
 
     @auto_fp16()
     def _extract_features_test(self, imgs):
@@ -158,8 +166,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         y = self.backbone(imgs)
 
         if isinstance(y, (list, tuple)):
-            assert len(y) == 1
-            y = y[0]
+            assert len(y) > 0
+            y = y[-1]
 
         if self.spatial_temporal_module is not None:
             y = self.spatial_temporal_module(y)
@@ -228,15 +236,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         imgs, attention_mask, head_args = self.reshape_input(imgs, attention_mask)
         losses = dict()
 
-        num_clips = imgs.size(0) // labels.size(0)
-        if num_clips > 1:
-            labels = labels.view(-1, 1).repeat(1, num_clips).view(-1)
-            if dataset_id is not None:
-                dataset_id = dataset_id.view(-1, 1).repeat(1, num_clips).view(-1)
-
         features = self._forward_module_train(
-            self.backbone, imgs, losses,
-            squeeze=True, attention_mask=attention_mask
+            self.backbone, imgs, losses, attention_mask=attention_mask
+        )
+        features = self._forward_module_train(
+            self.neck, features, losses, squeeze=True, squeeze_dim=-1,
+            labels=labels, dataset_id=dataset_id, num_clips=self.num_clips
         )
         features = self._forward_module_train(
             self.spatial_temporal_module, features, losses
@@ -247,12 +252,13 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         if self.with_sample_filtering:
             pred_labels = torch.zeros_like(labels.view(-1))
+            pred_conf = torch.zeros_like(labels.view(-1), dtype=features.dtype)
 
         heads = self.cls_head if self.multi_head else [self.cls_head]
         for head_id, cl_head in enumerate(heads):
             trg_mask = (dataset_id == head_id).view(-1) if dataset_id is not None else None
 
-            trg_labels = self._filter(labels, trg_mask)
+            trg_labels = self._filter(labels.view(-1), trg_mask)
             trg_num_samples = trg_labels.numel()
             if trg_num_samples == 0:
                 continue
@@ -301,28 +307,29 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             # clip mixing loss
             if self.with_clip_mixing:
+                clip_mixing_scale = self.train_cfg.clip_mixing.get('scale', cl_head.last_scale)
                 losses['loss/clip_mix' + str(head_id)] = self.clip_mixing_loss(
-                    trg_main_scores, trg_norm_embd, num_clips, cl_head.last_scale
+                    trg_main_scores, trg_labels.view(-1), trg_norm_embd, clip_mixing_scale
                 )
 
             if self.with_sample_filtering:
                 with torch.no_grad():
-                    pred_labels[trg_mask] = torch.argmax(trg_main_scores, dim=1)
+                    pred_conf[trg_mask], pred_labels[trg_mask] = torch.max(trg_main_scores, dim=1)
 
         if self.regularizer is not None:
             losses['loss/reg'] = self.regularizer(self.backbone)
 
         if self.with_sample_filtering:
-            self._add_train_meta_info(pred_labels=pred_labels, **kwargs)
+            self._add_train_meta_info(pred_labels=pred_labels, pred_conf=pred_conf, **kwargs)
 
         return losses
 
     def _add_train_meta_info(self, **kwargs):
-        for meta_name in ['pred_labels', 'sample_idx', 'clip_starts', 'clip_ends']:
+        for meta_name in self.meta_fields:
             assert meta_name in kwargs.keys(), f'There is no {meta_name} in meta info'
             assert kwargs[meta_name] is not None, f'The value of {meta_name} is None'
 
-            self.train_meta[meta_name] = kwargs[meta_name].clone().view(-1).detach()
+            self.train_meta[meta_name] = kwargs[meta_name].detach().clone().view(-1)
 
     def forward_test(self, imgs, dataset_id=None):
         """Defines the computation performed at every call when evaluation and

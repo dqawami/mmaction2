@@ -48,7 +48,8 @@ class SampleFrames(object):
                  twice_sample=False,
                  out_of_bound_opt='loop',
                  test_mode=False,
-                 start_index=None):
+                 start_index=None,
+                 enable_negatives=False):
 
         self.clip_len = clip_len
         self.frame_interval = frame_interval
@@ -56,6 +57,7 @@ class SampleFrames(object):
         self.temporal_jitter = temporal_jitter
         self.twice_sample = twice_sample
         self.out_of_bound_opt = out_of_bound_opt
+        self.enable_negatives = enable_negatives
         self.test_mode = test_mode
         assert self.out_of_bound_opt in ['loop', 'repeat_last']
 
@@ -64,7 +66,7 @@ class SampleFrames(object):
                           'it should be set in dataset class, see this pr: '
                           'https://github.com/open-mmlab/mmaction2/pull/89')
 
-    def _get_train_clips(self, num_frames):
+    def _get_train_clips(self, num_frames, frames_meta_info=None):
         """Get clip offsets in train mode.
 
         It will calculate the average interval for selected frames,
@@ -78,55 +80,60 @@ class SampleFrames(object):
         Returns:
             np.ndarray: Sampled frame indices in train mode.
         """
+
         ori_clip_len = self.clip_len * self.frame_interval
         avg_interval = (num_frames - ori_clip_len + 1) // self.num_clips
 
+        frame_weights = None
+        if frames_meta_info is not None:
+            est_frame_weights = frames_meta_info['matched_weights']
+            start_shift = frames_meta_info['start_shift']
+
+            frame_weights = np.zeros([num_frames], dtype=np.float32)
+            for frame_id, frame_weight in est_frame_weights.items():
+                local_frame_id = frame_id - start_shift
+                if 0 <= local_frame_id < num_frames:
+                    frame_weights[local_frame_id] += frame_weight
+
+            frame_weights = np.where(frame_weights < 0.0,
+                                     np.zeros_like(frame_weights),
+                                     1.0 + frame_weights)
+
+        is_positives = [True] * self.num_clips
+
         if avg_interval > 0:
-            base_offsets = np.arange(self.num_clips) * avg_interval
-            clip_offsets = base_offsets + np.random.randint(
-                avg_interval, size=self.num_clips)
+            if frame_weights is not None:
+                frame_cumsum = np.cumsum(frame_weights)
+                frame_pad_cumsum = np.pad(frame_cumsum, (1, 0), 'constant')
+                window_weights = frame_cumsum[(ori_clip_len - 1):] - frame_pad_cumsum[:-ori_clip_len]
+
+                sum_weights = np.sum(window_weights)
+                if sum_weights > 0:
+                    probs = window_weights / sum_weights
+                else:
+                    probs = np.full_like(window_weights, 1.0 / float(len(window_weights)))
+                    is_positives = [False] * self.num_clips
+
+                clip_offsets = np.sort(
+                    np.random.choice(np.arange(len(probs)), self.num_clips, p=probs)
+                )
+            else:
+                base_offsets = np.arange(self.num_clips) * avg_interval
+                clip_offsets = base_offsets + np.random.randint(avg_interval, size=self.num_clips)
         elif num_frames > max(self.num_clips, ori_clip_len):
-            clip_offsets = np.sort(
-                np.random.randint(
-                    num_frames - ori_clip_len + 1, size=self.num_clips))
+            clip_offsets = np.sort(np.random.randint(num_frames - ori_clip_len + 1, size=self.num_clips))
         elif avg_interval == 0:
             ratio = (num_frames - ori_clip_len + 1.0) / self.num_clips
             clip_offsets = np.around(np.arange(self.num_clips) * ratio)
         else:
             clip_offsets = np.zeros((self.num_clips, ), dtype=np.int)
 
-        return clip_offsets
+        if frame_weights is not None and avg_interval <= 0:
+            sum_weights = np.sum(frame_weights)
+            if sum_weights <= 0:
+                is_positives = [False] * self.num_clips
 
-    def _get_train_adaptive_clips(self, num_frames, frames_meta_info):
-        ori_clip_len = self.clip_len * self.frame_interval
-        avg_interval = (num_frames - ori_clip_len + 1) // self.num_clips
-
-        if avg_interval > 0:
-            frame_counts = np.ones([num_frames], dtype=np.float32)
-            for frame_id, num_pos_answers in frames_meta_info.items():
-                frame_counts[frame_id] += num_pos_answers
-
-            frame_cumsum = np.cumsum(frame_counts)
-            frame_pad_cumsum = np.pad(frame_cumsum, (1, 0), 'constant')
-            window_counts = frame_cumsum[(ori_clip_len - 1):] - frame_pad_cumsum[:-ori_clip_len]
-            probs = window_counts / np.sum(window_counts)
-
-            clip_offsets = np.sort(
-                np.random.choice(np.arange(len(probs)), self.num_clips, p=probs)
-            )
-        elif num_frames > max(self.num_clips, ori_clip_len):
-            clip_offsets = np.sort(
-                np.random.randint(num_frames - ori_clip_len + 1, size=self.num_clips)
-            )
-        elif avg_interval == 0:
-            ratio = (num_frames - ori_clip_len + 1.0) / self.num_clips
-            clip_offsets = np.around(
-                np.arange(self.num_clips) * ratio
-            )
-        else:
-            clip_offsets = np.zeros((self.num_clips, ), dtype=np.int)
-
-        return clip_offsets
+        return clip_offsets, is_positives
 
     def _get_test_clips(self, num_frames):
         """Get clip offsets in test mode.
@@ -142,16 +149,21 @@ class SampleFrames(object):
         Returns:
             np.ndarray: Sampled frame indices in test mode.
         """
+
         ori_clip_len = self.clip_len * self.frame_interval
-        avg_interval = (num_frames - ori_clip_len + 1) / float(self.num_clips)
+
         if num_frames > ori_clip_len - 1:
+            avg_interval = (num_frames - ori_clip_len + 1) / float(self.num_clips)
             base_offsets = np.arange(self.num_clips) * avg_interval
             clip_offsets = (base_offsets + avg_interval / 2.0).astype(np.int)
             if self.twice_sample:
                 clip_offsets = np.concatenate([clip_offsets, base_offsets])
         else:
             clip_offsets = np.zeros((self.num_clips, ), dtype=np.int)
-        return clip_offsets
+
+        is_positives = [True] * self.num_clips
+
+        return clip_offsets, is_positives
 
     def _sample_clips(self, num_frames, frames_meta_info=None):
         """Choose clip offsets for the video in a given mode.
@@ -163,13 +175,11 @@ class SampleFrames(object):
             np.ndarray: Sampled frame indices.
         """
         if self.test_mode:
-            clip_offsets = self._get_test_clips(num_frames)
-        elif frames_meta_info is None:
-            clip_offsets = self._get_train_clips(num_frames)
+            clip_offsets, is_positives = self._get_test_clips(num_frames)
         else:
-            clip_offsets = self._get_train_adaptive_clips(num_frames, frames_meta_info)
+            clip_offsets, is_positives = self._get_train_clips(num_frames, frames_meta_info)
 
-        return clip_offsets
+        return clip_offsets, is_positives
 
     def __call__(self, results):
         """Perform the SampleFrames loading.
@@ -178,13 +188,17 @@ class SampleFrames(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        total_frames = results['total_frames']
+        total_frames = results['clip_len']
+        start_index = results['start_index'] + results['clip_start']
 
         frames_meta_info = None
-        if results.get('sample_filtering', False):
-            frames_meta_info = results['matched_pred'] if not results['adaptive_mode'] else None
+        if results.get('sample_filtering', False) and results.get('filter_ready', False):
+            frames_meta_info = dict(
+                matched_weights=results['matched_weights'],
+                start_shift=results['clip_start']
+            )
 
-        clip_offsets = self._sample_clips(total_frames, frames_meta_info)
+        clip_offsets, is_positives = self._sample_clips(total_frames, frames_meta_info)
         frame_inds = np.arange(self.clip_len)[None, :] * self.frame_interval
         frame_inds = np.concatenate(clip_offsets[:, None] + frame_inds)
 
@@ -208,18 +222,32 @@ class SampleFrames(object):
         clip_starts = np.min(frame_inds, axis=1)
         clip_ends = np.max(frame_inds, axis=1) + 1
 
-        start_index = results['start_index']
-        results['frame_inds'] = np.concatenate(frame_inds) + start_index
+        results['frame_inds'] = frame_inds + start_index
         results['clip_starts'] = clip_starts
         results['clip_ends'] = clip_ends
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = self.num_clips
+        results['dataset_id'] = [results['dataset_id']] * self.num_clips\
+            if self.num_clips > 1 else results['dataset_id']
+        results['total_frames'] = [results['total_frames']] * self.num_clips \
+            if self.num_clips > 1 else results['total_frames']
+        if 'sample_idx' in results:
+            results['sample_idx'] = [results['sample_idx']] * self.num_clips \
+                if self.num_clips > 1 else results['sample_idx']
+
+        original_label = results['label']
+        if self.enable_negatives:
+            clip_labels = [original_label if pl else -1 for pl in is_positives]
+        else:
+            clip_labels = [original_label] * self.num_clips
+        results['label'] = clip_labels if self.num_clips > 1 else clip_labels[0]
 
         return results
 
     def __repr__(self):
-        repr_str = f'{self.__class__.__name__}(clip_len={self.clip_len}, ' \
+        repr_str = f'{self.__class__.__name__}(' \
+                   f'clip_len={self.clip_len}, ' \
                    f'frame_interval={self.frame_interval}, ' \
                    f'num_clips={self.num_clips})'
         return repr_str
@@ -461,7 +489,8 @@ class StreamSampleFrames(object):
                  trg_fps=15.0,
                  num_clips=1,
                  temporal_jitter=False,
-                 min_intersection=0.6,
+                 min_intersection=1.0,
+                 neg_prob=-1,
                  ignore_outside=False,
                  test_mode=False):
 
@@ -469,9 +498,21 @@ class StreamSampleFrames(object):
         self.trg_fps = trg_fps
         self.num_clips = num_clips
         self.temporal_jitter = temporal_jitter
-        self.min_intersection = min_intersection
         self.ignore_outside = ignore_outside
         self.test_mode = test_mode
+
+        self.enable_negatives = neg_prob is not None and neg_prob > 0
+        self.neg_prob = float(neg_prob) if self.enable_negatives else None
+
+        self.min_intersection = min_intersection
+        if isinstance(min_intersection, float):
+            self.min_static_intersect = min_intersection
+            self.min_dynamic_intersect = min_intersection
+        elif isinstance(min_intersection, dict):
+            self.min_static_intersect = float(min_intersection['static'])
+            self.min_dynamic_intersect = float(min_intersection['dynamic'])
+        else:
+            raise ValueError(f'Unknown format of min_intersection: {type(min_intersection)}')
 
     def _estimate_time_step(self, video_fps):
         return max(1, int(np.round(float(video_fps) / float(self.trg_fps))))
@@ -510,14 +551,45 @@ class StreamSampleFrames(object):
                 after_values = np.full(num_after, after_fill_value, dtype=np.int32)
 
                 indices = np.concatenate((before_values, indices, after_values))
+
+            neg_label = False
         else:
-            if record['clip_len'] < input_length:
-                bumpy_num_frames = int(float(1.0 - self.min_intersection) * float(record['clip_len']))
-                shift_start = max(record['video_start'], record['clip_end'] - bumpy_num_frames - input_length)
-                shift_end = min(record['video_end'] - input_length + 1, record['clip_start'] + bumpy_num_frames + 1)
+            min_intersection_ratio = self.min_static_intersect \
+                if record['action_type'] == 'static' \
+                else self.min_dynamic_intersect
+            bumpy_length = int(np.round(float(1.0 - min_intersection_ratio) *
+                                        float(min(input_length, record['clip_len']))))
+
+            valid_neg_segments = []
+
+            neg_before_start = record['video_start']
+            neg_before_end = record['clip_start'] + bumpy_length + 1
+            neg_before_length = neg_before_end - neg_before_start
+            if neg_before_length >= input_length:
+                valid_neg_segments.append((neg_before_start, neg_before_end))
+
+            neg_after_start = record['clip_end'] - bumpy_length
+            neg_after_end = record['video_end']
+            neg_after_length = neg_after_end - neg_after_start
+            if neg_after_length >= input_length:
+                valid_neg_segments.append((neg_after_start, neg_after_end))
+
+            neg_label = self.enable_negatives and len(valid_neg_segments) > 0 and np.random.rand() < self.neg_prob
+            if neg_label:
+                neg_segment_start, neg_segment_end = valid_neg_segments[np.random.randint(len(valid_neg_segments))]
+                shift_start = neg_segment_start
+                shift_end = neg_segment_end - input_length + 1
             else:
-                shift_start = record['clip_start']
-                shift_end = record['clip_end'] - input_length + 1
+                if record['clip_len'] < input_length:
+                    shift_start = max(record['video_start'],
+                                      record['clip_end'] - bumpy_length - input_length)
+                    shift_end = min(record['video_end'] - input_length + 1,
+                                    record['clip_start'] + bumpy_length + 1)
+                else:
+                    shift_start = max(record['video_start'],
+                                      record['clip_start'] - bumpy_length)
+                    shift_end = min(record['video_end'] - input_length + 1,
+                                    record['clip_end'] + bumpy_length - input_length + 1)
 
             if self.temporal_jitter:
                 offsets = np.random.randint(low=0, high=time_step, size=output_length, dtype=np.int32)
@@ -527,7 +599,7 @@ class StreamSampleFrames(object):
             start_pos = np.random.randint(low=shift_start, high=shift_end)
             indices = np.array([start_pos + i * time_step + offsets[i] for i in range(output_length)])
 
-        return indices
+        return indices, not neg_label
 
     def _get_test_indices(self, record, time_step, input_length, output_length):
         if record['video_len'] < input_length:
@@ -552,7 +624,7 @@ class StreamSampleFrames(object):
 
             indices = np.array([start_pos + i * time_step for i in range(output_length)])
 
-        return indices
+        return indices, True
 
     def __call__(self, results):
         """Perform the StreamSampleFrames loading.
@@ -566,26 +638,49 @@ class StreamSampleFrames(object):
         input_length, output_length = self._estimate_clip_lengths(frame_interval)
 
         start_index = results['start_index']
-        all_frame_inds = []
+        all_frame_inds, all_labels, all_dataset_ids, clip_starts, clip_ends = [], [], [], [], []
         for clip_id in range(self.num_clips):
-            frame_inds = self._generate_indices(results, frame_interval, input_length, output_length)
-            frame_inds = np.array(frame_inds).astype(np.int)
-            frame_inds = np.where(frame_inds < 0, frame_inds, frame_inds + start_index)
-            all_frame_inds.append(frame_inds)
+            clip_frame_inds, is_positive = self._generate_indices(
+                results, frame_interval, input_length, output_length
+            )
 
-        frame_inds = np.concatenate(all_frame_inds)
+            valid_clip_frame_inds = [cfi for cfi in clip_frame_inds if cfi >= 0]
+            assert len(valid_clip_frame_inds) > 0
+            clip_starts.append(np.min(valid_clip_frame_inds))
+            clip_ends.append(np.max(valid_clip_frame_inds) + 1)
 
-        results['frame_inds'] = frame_inds
+            clip_frame_inds = np.array(clip_frame_inds).astype(np.int)
+            clip_frame_inds = np.where(clip_frame_inds < 0, clip_frame_inds, clip_frame_inds + start_index)
+            all_frame_inds.append(clip_frame_inds)
+
+            all_labels.append(results['label'] if is_positive else -1)
+            all_dataset_ids.append(results['dataset_id'])
+
+        results['frame_inds'] = np.array(all_frame_inds)
+        results['clip_starts'] = clip_starts
+        results['clip_ends'] = clip_ends
         results['num_clips'] = self.num_clips
         results['clip_len'] = self.clip_len
+        results['label'] = all_labels if self.num_clips > 1 else all_labels[0]
+        results['dataset_id'] = all_dataset_ids if self.num_clips > 1 else all_dataset_ids[0]
+        results['total_frames'] = [results['total_frames']] * self.num_clips \
+            if self.num_clips > 1 else results['total_frames']
+        if 'sample_idx' in results:
+            results['sample_idx'] = [results['sample_idx']] * self.num_clips \
+                if self.num_clips > 1 else results['sample_idx']
 
         return results
 
     def __repr__(self):
-        repr_str = f'{self.__class__.__name__}(clip_len={self.clip_len}, ' \
+        repr_str = f'{self.__class__.__name__}(' \
+                   f'clip_len={self.clip_len}, ' \
                    f'trg_fps={self.trg_fps}, ' \
                    f'num_clips={self.num_clips}, ' \
-                   f'min_intersection={self.min_intersection})'
+                   f'temporal_jitter={self.temporal_jitter}, ' \
+                   f'min_intersection={self.min_intersection}, ' \
+                   f'neg_prob={self.neg_prob}, ' \
+                   f'ignore_outside={self.ignore_outside}, ' \
+                   f'test_mode={self.test_mode})'
         return repr_str
 
 
@@ -871,7 +966,21 @@ class PyAVInit(object):
         container = av.open(file_obj)
 
         results['video_reader'] = container
-        results['total_frames'] = container.streams.video[0].frames
+
+        num_frames = container.streams.video[0].frames
+        results['total_frames'] = num_frames
+
+        if 'clip_end' in results:
+            assert 0 <= results['clip_start'] < results['clip_end'] <= num_frames
+            assert 0 <= results['video_start'] < results['video_end'] <= num_frames
+        else:
+            results['clip_start'] = 0
+            results['clip_end'] = num_frames
+            results['video_start'] = 0
+            results['video_end'] = num_frames
+            results['clip_len'] = results['clip_end'] - results['clip_start']
+            results['video_len'] = results['video_end'] - results['video_start']
+            results['fps'] = container.streams.video[0].average_rate
 
         return results
 
@@ -970,7 +1079,21 @@ class DecordInit(object):
         container = decord.VideoReader(file_obj, num_threads=self.num_threads)
 
         results['video_reader'] = container
-        results['total_frames'] = len(container)
+
+        num_frames = len(container)
+        results['total_frames'] = num_frames
+
+        if 'clip_end' in results:
+            assert 0 <= results['clip_start'] < results['clip_end'] <= num_frames
+            assert 0 <= results['video_start'] < results['video_end'] <= num_frames
+        else:
+            results['clip_start'] = 0
+            results['clip_end'] = num_frames
+            results['video_start'] = 0
+            results['video_end'] = num_frames
+            results['clip_len'] = results['clip_end'] - results['clip_start']
+            results['video_len'] = results['video_end'] - results['video_start']
+            results['fps'] = container.get_avg_fps()
 
         return results
 
@@ -1059,7 +1182,21 @@ class OpenCVInit(object):
         container = mmcv.VideoReader(new_path)
         results['new_path'] = new_path
         results['video_reader'] = container
-        results['total_frames'] = len(container)
+
+        num_frames = len(container)
+        results['total_frames'] = num_frames
+
+        if 'clip_end' in results:
+            assert 0 <= results['clip_start'] < results['clip_end'] <= num_frames
+            assert 0 <= results['video_start'] < results['video_end'] <= num_frames
+        else:
+            results['clip_start'] = 0
+            results['clip_end'] = num_frames
+            results['video_start'] = 0
+            results['video_end'] = num_frames
+            results['clip_len'] = results['clip_end'] - results['clip_start']
+            results['video_len'] = results['video_end'] - results['video_start']
+            results['fps'] = container.fps()
 
         return results
 
@@ -1361,8 +1498,41 @@ class LoadProposals(object):
 
 
 @PIPELINES.register_module()
+class LoadKpts(object):
+    """Loads key-points.
+    """
+
+    def __init__(self, out_name='kpts'):
+        self.out_name = out_name
+
+    @staticmethod
+    def _load_kpts(filepath):
+        with open(filepath) as kpts_stream:
+            raw_kpts = mmcv.load(kpts_stream, file_format='json')
+
+        kpts = dict()
+        for kpt_id, frame_data in raw_kpts.items():
+            kpts[int(kpt_id)] = {int(frame_id): kpt for frame_id, kpt in frame_data.items()}
+
+        return kpts
+
+    def __call__(self, results):
+        assert 'kpts_file' in results
+        assert osp.exists(results['kpts_file'])
+
+        results[self.out_name] = self._load_kpts(results['kpts_file'])
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__} (' \
+                   f'out_name={self.out_name})'
+        return repr_str
+
+
+@PIPELINES.register_module()
 class GenerateKptsMask(object):
-    """Generate key-point masks.
+    """Generates key-point masks.
     """
 
     def __init__(self, sigma_scale=0.1, out_name='attention_mask'):

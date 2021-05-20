@@ -1,7 +1,4 @@
 import os.path as osp
-from collections import defaultdict
-
-import torch
 
 from .recognition_dataset import RecognitionDataset
 from .registry import DATASETS
@@ -26,72 +23,18 @@ class VideoDataset(RecognitionDataset):
         some/path/003.mp4 2
         some/path/004.mp4 3
         some/path/005.mp4 3
-
-
-    Args:
-        ann_file (str): Path to the annotation file.
-        pipeline (list[dict | callable]): A sequence of data transforms.
-        start_index (int): Specify a start index for frames in consideration of
-            different filename format. However, when taking videos as input,
-            it should be set to 0, since frames loaded from videos count
-            from 0. Default: 0.
     """
 
     def __init__(self,
-                 source,
-                 root_dir,
-                 ann_file,
-                 data_subdir,
-                 pipeline,
-                 kpts_subdir=None,
-                 load_kpts=False,
-                 test_mode=False,
-                 multi_class=False,
-                 num_classes=None,
                  start_index=0,
-                 modality='RGB',
-                 logger=None):
-        super().__init__(source, root_dir, ann_file, data_subdir, pipeline,
-                         kpts_subdir, load_kpts, test_mode,
-                         multi_class, num_classes, start_index, modality, logger)
+                 **kwargs):
+        super().__init__(start_index=start_index, **kwargs)
 
-    def _load_annotations(self, ann_file, data_prefix=None):
-        """Load annotation file to get video information."""
+    def _parse_data_source(self, data_source, data_prefix):
+        filename = data_source
+        if data_prefix is not None:
+            filename = osp.join(data_prefix, filename)
 
-        if ann_file.endswith('.json'):
-            return self.load_json_annotations()
-
-        video_infos = []
-        with open(ann_file, 'r') as fin:
-            for line in fin:
-                line_split = line.strip().split()
-                if self.multi_class:
-                    assert self.num_classes is not None
-                    filename, label = line_split[0], line_split[1:]
-                    label = list(map(int, label))
-                    onehot = torch.zeros(self.num_classes)
-                    onehot[label] = 1.0
-                else:
-                    filename, label = line_split
-                    label = int(label)
-
-                if data_prefix is not None:
-                    filename = osp.join(data_prefix, filename)
-
-                video_infos.append(dict(
-                    filename=filename,
-                    label=onehot if self.multi_class else label,
-                    matched_pred=defaultdict(int),
-                ))
-
-        return video_infos
-
-    def update_meta_info(self, pred_labels, sample_idx, clip_starts, clip_ends):
-        for idx, pred_label, start, end in zip(sample_idx, pred_labels, clip_starts, clip_ends):
-            video_info = self.records[idx]
-            video_label = video_info['label']
-            video_matches = video_info['matched_pred']
-
-            if video_label == pred_label:
-                for ii in range(start, end):
-                    video_matches[ii] += 1
+        return dict(
+            filename=filename,
+        )

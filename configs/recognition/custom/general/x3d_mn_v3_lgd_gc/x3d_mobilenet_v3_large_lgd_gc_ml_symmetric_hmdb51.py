@@ -1,8 +1,8 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'ucf101', 'hmdb51', 'activitynet200'
-test_sources = 'ucf101', 'hmdb51', 'activitynet200'
+train_sources = 'hmdb51',
+test_sources = 'hmdb51',
 
 root_dir = 'data'
 work_dir = None
@@ -13,9 +13,14 @@ reset_layer_suffixes = None
 
 # model settings
 input_img_size = 224
-clip_len = 16
+input_clip_length = 16
 frame_interval = 2
 
+# training settings
+enable_clip_mixing = False
+num_train_clips = 2 if enable_clip_mixing else 1
+
+# model definition
 model = dict(
     type='Recognizer3D',
     backbone=dict(
@@ -47,17 +52,39 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=101,
+        num_classes=51,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
         in_channels=960,
-        embedding=False,
-        enable_rebalance=False,
-        rebalance_num_groups=3,
+        embedding=True,
+        embd_size=256,
+        classification_layer='symmetric',
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            loss_weight=1.0
+            type='AMSoftmaxLoss',
+            target_loss='ce',
+            scale_cfg=dict(
+                type='ConstantScalarScheduler',
+                scale=32.0,
+            ),
+            pr_product=False,
+            margin_type='cos',
+            margin=0.0,
+            gamma=0.0,
+            t=1.0,
+            conf_penalty_weight=0.085,
+            filter_type='positives',
+            top_k=None,
+            enable_class_weighting=False,
+            enable_adaptive_margins=False,
+        ),
+        losses_extra=dict(
+            loss_lpush=dict(
+                type='LocalPushLoss',
+                margin=0.1,
+                weight=1.0,
+                smart_margin=True,
+            ),
         ),
     ),
 )
@@ -65,7 +92,7 @@ model = dict(
 # model training and testing settings
 train_cfg = dict(
     self_challenging=dict(enable=False, drop_p=0.33),
-    clip_mixing=dict(enable=False, mode='logits', weight=0.2),
+    clip_mixing=dict(enable=enable_clip_mixing, mode='logits', num_clips=num_train_clips, weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9)
 )
 test_cfg = dict(
@@ -81,9 +108,9 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='DecordInit'),
     dict(type='SampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          frame_interval=frame_interval,
-         num_clips=1,
+         num_clips=num_train_clips,
          temporal_jitter=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
@@ -93,11 +120,18 @@ train_pipeline = [
          aspect_ratio_range=(0.5, 1.5)),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='PhotometricDistortion',
-         brightness_range=(65, 190),
-         contrast_range=(0.6, 1.4),
-         saturation_range=(0.7, 1.3),
-         hue_delta=18),
+    dict(type='ProbCompose',
+         transforms=[
+             dict(type='Empty'),
+             dict(type='PhotometricDistortion',
+                  brightness_range=(65, 190),
+                  contrast_range=(0.6, 1.4),
+                  saturation_range=(0.7, 1.3),
+                  hue_delta=18),
+             dict(type='CrossNorm',
+                  mean_std_file='mean_std_list.txt'),
+         ],
+         probs=[0.1, 0.45, 0.45]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
@@ -106,7 +140,7 @@ train_pipeline = [
 val_pipeline = [
     dict(type='DecordInit'),
     dict(type='SampleFrames',
-         clip_len=clip_len,
+         clip_len=input_clip_length,
          frame_interval=frame_interval,
          num_clips=1,
          test_mode=True),
@@ -148,7 +182,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=1e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -162,21 +196,24 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=0,
+    epochs=20,
     open_layers=['cls_head']
 )
 
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[150],
+    periods=[55],
     min_lr_ratio=1e-2,
-    alpha=1.4,
+    alpha=1.5,
+    fixed='constant',
+    fixed_epochs=20,
+    fixed_ratio=10.0,
     warmup='cos',
-    warmup_epochs=10,
+    warmup_epochs=5,
     warmup_ratio=1e-2,
 )
-total_epochs = 160
+total_epochs = 75
 
 # workflow
 workflow = [('train', 1)]

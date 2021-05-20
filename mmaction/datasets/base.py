@@ -53,6 +53,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
                  kpts_subdir=None,
                  load_kpts=False,
                  test_mode=False,
+                 with_offset=False,
                  multi_class=False,
                  num_classes=None,
                  start_index=1,
@@ -62,19 +63,21 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
 
         assert isinstance(source, str)
         self.dataset_ids_map = {0: source}
+        self.root_dir = osp.join(root_dir, source)
 
-        ann_file = osp.join(root_dir, source, ann_file)
+        ann_file = osp.join(self.root_dir, ann_file)
         assert osp.exists(ann_file), f'Annotation file does not exist: {ann_file}'
 
-        data_prefix = osp.join(root_dir, source, data_subdir)
+        data_prefix = osp.join(self.root_dir, data_subdir)
         assert osp.exists(data_prefix), f'Data root dir does not exist: {data_prefix}'
 
         kpts_prefix = None
         if kpts_subdir is not None and load_kpts:
-            kpts_prefix = osp.join(root_dir, source, kpts_subdir)
+            kpts_prefix = osp.join(self.root_dir, kpts_subdir)
             assert osp.exists(kpts_prefix), f'Kpts root dir does not exist: {kpts_prefix}'
 
         self.test_mode = test_mode
+        self.with_offset = with_offset
         self.multi_class = multi_class
         self.num_classes = num_classes
         self.start_index = start_index
@@ -91,7 +94,6 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         self.records, self.label_maps = self._compress_labels(records)
 
         self.enable_sample_filtering = False
-        self.enable_adaptive_mode = False
 
     @abstractmethod
     def _load_annotations(self, ann_file, data_prefix):
@@ -224,7 +226,6 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         results['start_index'] = self.start_index
         results['sample_idx'] = idx
         results['sample_filtering'] = self.enable_sample_filtering
-        results['adaptive_mode'] = self.enable_adaptive_mode
 
         return self.pipeline(results)
 
@@ -314,6 +315,9 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         else:
             return self.prepare_train_frames(idx)
 
+    def get_info(self, idx):
+        return copy.deepcopy(self.records[idx])
+
     def num_classes(self):
         datasets = self._parse_data()
 
@@ -333,7 +337,27 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     def num_datasets(self):
         return len(self.dataset_ids_map)
 
+    @property
+    def clustered_ids(self):
+        all_ids = defaultdict(list)
+        for record_id, record in enumerate(self.records):
+            dataset_id = record['dataset_id']
+            all_ids[dataset_id].append((record_id, record['label']))
+
+        out_ids = {}
+        for dataset_id, dataset_items in all_ids.items():
+            clustered_dataset = defaultdict(list)
+            for record_id, label in dataset_items:
+                clustered_dataset[label].append(record_id)
+
+            out_ids[dataset_id] = clustered_dataset
+
+        return out_ids
+
     def update_meta_info(self, **kwargs):
+        pass
+
+    def get_filter_active_samples_ratio(self):
         pass
 
     def filter(self, target_class_ids, target_dataset_id=0):
