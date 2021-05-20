@@ -125,7 +125,7 @@ data = dict(
         drop_last=True
     ),
     shared=dict(
-        type='StreamDataset',
+        type='RawframeDataset',
         data_subdir='global_crops',
         filename_tmpl='{:05d}.jpg'
     ),
