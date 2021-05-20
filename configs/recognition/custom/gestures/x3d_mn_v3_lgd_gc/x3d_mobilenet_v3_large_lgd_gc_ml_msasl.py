@@ -1,8 +1,8 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'jester',
-test_sources = 'jester',
+train_sources = 'msasl',
+test_sources = 'msasl',
 
 root_dir = 'data'
 work_dir = None
@@ -124,7 +124,6 @@ train_pipeline = [
          input_size=input_img_size,
          scale_limits=(1, 0.875)),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='MapFlippedLabels', map_file=dict(jester='flip_labels_map.txt')),
     dict(type='ProbCompose',
          transforms=[
              dict(type='Empty'),
@@ -166,7 +165,7 @@ data = dict(
     shared=dict(
         type='RawframeDataset',
         data_subdir='global_crops',
-        filename_tmpl='{:05d}.jpg'
+        filename_tmpl='img_{:05d}.jpg'
     ),
     train=dict(
         source=train_sources,
