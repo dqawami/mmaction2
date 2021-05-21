@@ -1121,7 +1121,7 @@ class DecordDecode(object):
         container = results['video_reader']
 
         if results['frame_inds'].ndim != 1:
-            results['frame_inds'] = np.squeeze(results['frame_inds'])
+            results['frame_inds'] = results['frame_inds'].flatten()
 
         frame_inds = results['frame_inds']
         # Generate frame index mapping in order
