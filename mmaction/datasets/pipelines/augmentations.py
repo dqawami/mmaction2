@@ -1339,13 +1339,15 @@ class MixUp(object):
 class CrossNorm(object):
     def __init__(self, root_dir, mean_std_file, prob=1.0):
         mean_std_file = osp.join(root_dir, mean_std_file)
-        if not osp.exists(mean_std_file):
-            raise ValueError(f'mean_std_file does not exist: {mean_std_file}')
+        self.enable = osp.exists(mean_std_file)
 
-        self.cross_mean, self.cross_std = self._parse_data(mean_std_file)
-        self.num_tuples = len(self.cross_mean)
-        if self.num_tuples == 0:
-            raise ValueError('Found no mean (or std) tuples for CrossNorm')
+        if self.enable:
+            self.cross_mean, self.cross_std = self._parse_data(mean_std_file)
+            self.num_tuples = len(self.cross_mean)
+            if self.num_tuples == 0:
+                raise ValueError('Found no mean (or std) tuples for CrossNorm')
+        else:
+            self.cross_mean, self.cross_std, self.num_tuples = None, None, 0
 
         self.prob = prob
         assert 0.0 <= self.prob <= 1.0
@@ -1375,7 +1377,7 @@ class CrossNorm(object):
         return mean_data.reshape([-1, 1, 1, 3]), std_data.reshape([-1, 1, 1, 3])
 
     def __call__(self, results):
-        if np.random.rand() > self.prob:
+        if not self.enable or np.random.rand() > self.prob:
             return results
 
         img_data = results['imgs']
