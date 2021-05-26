@@ -240,17 +240,16 @@ def wrap_nncf_model(model,
     # print('NNCF Config')
     # print(nncf_config)
 
-    # if 'log_dir' in nncf_config:
-    #     os.makedirs(nncf_config['log_dir'], exist_ok=True)
+    if 'log_dir' in nncf_config:
+        os.makedirs(nncf_config['log_dir'], exist_ok=True)
     compression_ctrl, model = create_compressed_model(model,
                                                       nncf_config,
                                                       dummy_forward_fn=dummy_forward,
                                                       wrap_inputs_fn=wrap_inputs,
                                                       resuming_state_dict=resuming_state_dict)
 
-    print('Returned compressed model')
+    # print('Returned compressed model')
 
-    model = change_export_func_first_conv(model)
     # model.export = export_method.__get__(model)
 
     return compression_ctrl, model
