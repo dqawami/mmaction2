@@ -10,6 +10,12 @@ import onnx
 import mmcv
 from mmcv.runner import set_random_seed
 
+from mmaction.apis import get_fake_input, init_recognizer
+from mmaction.integration.nncf import (check_nncf_is_enabled,
+                                       get_nncf_config_from_meta,
+                                       is_checkpoint_nncf,
+                                       wrap_nncf_model)
+
 from mmaction.models import build_recognizer
 from mmaction.core import load_checkpoint
 from mmaction.utils import ExtendedDictAction
@@ -139,6 +145,31 @@ def main(args):
                         if isinstance(cfg.input_img_size, (list, tuple))
                         else (cfg.input_img_size, cfg.input_img_size))
     input_size = (3, input_time_size) + input_image_size
+
+    # BEGIN nncf part
+    was_model_compressed = is_checkpoint_nncf(args.checkpoint)
+    cfg_contains_nncf = cfg.get('nncf_config')
+
+    if cfg_contains_nncf and not was_model_compressed:
+        raise RuntimeError('Trying to make export with NNCF compression '
+                           'a model snapshot that was NOT trained with NNCF')
+
+    if was_model_compressed and not cfg_contains_nncf:
+        # reading NNCF config from checkpoint
+        nncf_part = get_nncf_config_from_meta(args.checkpoint)
+        for k, v, in nncf_part.items():
+            cfg[k] = v
+
+    if cfg.get('nncf_config'):
+        alt_ssd_export = getattr(args, 'alt_ssd_export', False)
+        assert not alt_ssd_export, \
+                'Export of NNCF-compressed model is incompatible with --alt_ssd_export'
+        check_nncf_is_enabled()
+        cfg.load_from = args.checkpoint
+        cfg.resume_from = None
+        compression_ctrl, model = wrap_nncf_model(model, cfg, None, get_fake_input)
+        compression_ctrl.prepare_for_export()
+    # END nncf part
 
     onnx_model_path = join(args.output_dir, splitext(basename(args.config))[0] + '.onnx')
     base_output_dir = dirname(onnx_model_path)
