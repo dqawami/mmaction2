@@ -16,6 +16,7 @@ from mmaction.datasets import build_dataset
 from mmaction.models import build_model
 from mmaction.utils import collect_env, get_root_logger, ExtendedDictAction
 from mmaction.core.utils import propagate_root_dir
+from mmaction.integration.nncf import check_nncf_is_enabled, get_nncf_metadata
 
 MODEL_SOURCES = 'modelzoo://', 'torchvision://', 'open-mmlab://', 'http://', 'https://'
 
@@ -113,6 +114,13 @@ def update_config(cfg, args):
             mmaction_version=__version__,
             config=cfg.text
         )
+        if cfg.get('nncf_config'):
+            nncf_metadata = get_nncf_metadata()
+            cfg.checkpoint_config.meta.update(nncf_metadata)
+    else:
+        assert not cfg.get('nncf_config'), (
+            "NNCF is enabled, but checkpoint_config is not set -- "
+            "cannot store NNCF metainfo into checkpoints")
 
     if args.gpu_ids is not None:
         cfg.gpu_ids = args.gpu_ids
@@ -160,6 +168,11 @@ def main():
     # log some basic info
     logger.info(f'Distributed training: {distributed}')
     logger.info(f'Config: {cfg.text}')
+
+    if cfg.get('nncf_config'):
+        check_nncf_is_enabled()
+        logger.info('NNCF config: {}'.format(cfg.nncf_config))
+        meta.update(get_nncf_metadata())
 
     # set random seeds
     cfg.seed = args.seed
