@@ -11,7 +11,7 @@ from ...utils import get_root_logger
 from ..registry import BACKBONES
 from ..losses import TotalVarianceLoss
 from .mobilenetv3 import make_divisible, MobileNetV3
-
+from ...integration.nncf.compression import print_dbg
 
 class SELayer_3D(nn.Module):
     def __init__(self, in_channels, reduction=4, reduce_temporal=False, norm='none'):
@@ -464,7 +464,9 @@ class MobileNetV3_S3D(nn.Module):
             self.out_ids = [out_id + num_layers_before for out_id in out_ids]
 
     def forward(self, x, return_extra_data=False, enable_extra_modules=True):
+        print_dbg("MobileNetV3_S3D: x shape", x.size())
         y = self._norm_input(x)
+        print_dbg("MobileNetV3_S3D: initial y shape", y.size())
 
         outs = []
         feature_data, att_data, sgs_data = dict(), dict(), dict()
@@ -472,6 +474,7 @@ class MobileNetV3_S3D(nn.Module):
             y = self._infer_module(
                 y, module_idx, return_extra_data, enable_extra_modules, feature_data, att_data
             )
+            print_dbg("MobileNetV3_S3D: y shape", y.size())
 
             if self.sgs_modules is not None and module_idx in self.sgs_idx:
                 sgs_module_name = 'sgs_{}'.format(module_idx)

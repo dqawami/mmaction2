@@ -123,7 +123,8 @@ def get_nncf_config_from_meta(path):
 def wrap_nncf_model(model,
                     cfg,
                     data_loader_for_init=None,
-                    get_fake_input_func=None):
+                    get_fake_input_func=None,
+                    export=False):
     """
     The function wraps mmdet model by NNCF
     Note that the parameter `get_fake_input_func` should be the function `get_fake_input`
@@ -194,7 +195,9 @@ def wrap_nncf_model(model,
         assert get_fake_input_func is not None
         assert len(input_size) == 4 and input_size[0] == 1
         H, W, C = input_size[2], input_size[3], input_size[1]
+        # print('compression; model.parameters:', next(model.parameters()))
         device = next(model.parameters()).device
+        # print('compression; device:', device)
         with no_nncf_trace():
             return get_fake_input_func(cfg, orig_img_shape=tuple([H, W, C]), device=device)
 
@@ -202,7 +205,14 @@ def wrap_nncf_model(model,
         fake_data = _get_fake_data_for_forward(cfg, nncf_config, get_fake_input_func)
         img = fake_data["imgs"]
         img = nncf_model_input(img)
-        model(imgs=img, return_loss=False)
+        # print('Model type:', type(model), flush=True)
+        # assert False
+        print_dbg("dummy_forward; img size", img.size())
+        if export:
+            img, _, _ = model.reshape_input(imgs=img)
+            model(imgs=img)
+        else:
+            model(imgs=img, return_loss=False)
 
     def wrap_inputs(args, kwargs):
         # during dummy_forward

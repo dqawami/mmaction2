@@ -29,6 +29,9 @@ def convert_to_onnx(net, input_size, output_file_path, opset, check=True):
     dynamic_axes = {'input': {0: 'batch_size', 1: 'channels', 2: 'length', 3: 'height', 4: 'width'},
                     'output': {0: 'batch_size', 1: 'scores'}}
 
+    net = net.cpu()
+    # dummy_input = dummy_input.cuda()
+
     with torch.no_grad():
         torch.onnx.export(
             net,
@@ -161,13 +164,15 @@ def main(args):
             cfg[k] = v
 
     if cfg.get('nncf_config'):
+        if torch.cuda.is_available():
+            model.cuda()
         alt_ssd_export = getattr(args, 'alt_ssd_export', False)
         assert not alt_ssd_export, \
                 'Export of NNCF-compressed model is incompatible with --alt_ssd_export'
         check_nncf_is_enabled()
         cfg.load_from = args.checkpoint
         cfg.resume_from = None
-        compression_ctrl, model = wrap_nncf_model(model, cfg, None, get_fake_input)
+        compression_ctrl, model = wrap_nncf_model(model, cfg, None, get_fake_input, export=True)
         compression_ctrl.prepare_for_export()
     # END nncf part
 

@@ -255,6 +255,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         return out
 
     def forward_train(self, imgs, labels, dataset_id=None, attention_mask=None, **kwargs):
+        print_dbg("Recognizer")
         imgs, attention_mask, head_args = self.reshape_input(imgs, attention_mask)
         losses = dict()
 
@@ -399,9 +400,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         if self.multi_head:
             raise NotImplementedError('Inference does not support multi-head architectures')
 
+        print_dbg('forward inference; input img size', imgs.shape)
+
         imgs, _, head_args = self.reshape_input_inference(imgs)
         y = self._extract_features_test(imgs)
-        out = self.cls_head(y, *head_args)
+        with no_nncf_trace():
+            out = self.cls_head(y, *head_args)
 
         return out
 
