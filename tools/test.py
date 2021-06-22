@@ -9,12 +9,14 @@ from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, init_dist, set_random_seed
 from mmcv.runner.fp16_utils import wrap_fp16_model
 
-from mmaction.apis import multi_gpu_test, single_gpu_test
+from mmaction.apis import multi_gpu_test, single_gpu_test, get_fake_input
 from mmaction.datasets import build_dataloader, build_dataset
 from mmaction.models import build_model
 from mmaction.utils import ExtendedDictAction
 from mmaction.core.utils import propagate_root_dir, load_checkpoint
-
+from mmaction.integration.nncf import (check_nncf_is_enabled,
+                                       get_nncf_config_from_meta,
+                                       is_checkpoint_nncf, wrap_nncf_model)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMAction2 test (and eval) a model')
@@ -151,15 +153,32 @@ def main():
         class_sizes=dataset.class_sizes,
         class_maps=dataset.class_maps
     )
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
 
-    # load model weights
-    load_checkpoint(model, args.checkpoint, map_location='cpu', force_matching=True)
+    # nncf model wrapper
+    if is_checkpoint_nncf(args.checkpoint) and not cfg.get('nncf_config'):
+        # reading NNCF config from checkpoint
+        nncf_part = get_nncf_config_from_meta(args.checkpoint)
+        for k, v in nncf_part.items():
+            cfg[k] = v
 
-    if args.fuse_conv_bn:
-        model = fuse_conv_bn(model)
+    if cfg.get('nncf_config'):
+        check_nncf_is_enabled()
+        if not is_checkpoint_nncf(args.checkpoint):
+            raise RuntimeError('Trying to make testing with NNCF compression a model snapshot that was NOT trained with NNCF')
+        cfg.load_from = args.checkpoint
+        cfg.resume_from = None
+        if torch.cuda.is_available():
+            model = model.cuda()
+        _, model = wrap_nncf_model(model, cfg, None, get_fake_input)
+        # checkpoint = torch.load(args.checkpoint, map_location=None)
+    else:
+        fp16_cfg = cfg.get('fp16', None)
+        if fp16_cfg is not None:
+            wrap_fp16_model(model)
+        # load model weights
+        load_checkpoint(model, args.checkpoint, map_location='cpu', force_matching=True)
+        if args.fuse_conv_bn:
+            model = fuse_conv_bn(model)
 
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
