@@ -54,7 +54,7 @@ def print_statistics(stats, logger):
     except ImportError:
         texttable_imported = False
 
-    for key, val in stats.items():
+    for key, val in stats:
         if texttable_imported and isinstance(val, Texttable):
             logger.info(key)
             logger.info(val.draw())

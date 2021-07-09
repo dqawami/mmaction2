@@ -18,10 +18,10 @@ def print_dbg(*args, **kwargs):
 
 if is_nncf_enabled():
     try:
-        from nncf.initialization import InitializingDataLoader
-        from nncf.nncf_network import NNCFNetwork
+        from nncf.torch.initialization import DefaultInitializingDataLoader
+        from nncf.torch.nncf_network import NNCFNetwork
 
-        class_InitializingDataLoader = InitializingDataLoader
+        class_InitializingDataLoader = DefaultInitializingDataLoader
     except ImportError:
         raise RuntimeError(
             'Cannot import the standard functions of NNCF library '
@@ -133,10 +133,11 @@ def wrap_nncf_model(model,
 
     check_nncf_is_enabled()
 
-    from nncf import (NNCFConfig, create_compressed_model,
-                      register_default_init_args)
-    from nncf.dynamic_graph.io_handling import nncf_model_input
-    from nncf.dynamic_graph.trace_tensor import TracedTensor
+    from nncf.config import NNCFConfig
+    from nncf.torch import (create_compressed_model,
+                            register_default_init_args)
+    from nncf.torch.dynamic_graph.io_handling import nncf_model_input
+    from nncf.torch.dynamic_graph.trace_tensor import TracedTensor
 
     pathlib.Path(cfg.work_dir).mkdir(parents=True, exist_ok=True)
     nncf_config = NNCFConfig(cfg.nncf_config)
