@@ -225,38 +225,21 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
     @staticmethod
     def _filter(x, mask):
-        # if is_in_nncf_tracing():
-        #     x.type(torch.Tensor)
-        #     out.requires_grad = True
         if x is None:
             return None
         elif mask is None:
             return x
         elif isinstance(x, (tuple, list)):
-            print_dbg('x is tuple or list')
-            out = [_x[mask] for _x in x]
+            return [_x[mask] for _x in x]
         else:
-            print_dbg('x', x)
-            print_dbg('base_recognizer; _filter; x.requires_grad', x.requires_grad)
-            print_dbg('base_recognizer; _filter; x.grad_fn', x.grad_fn)
-            print_dbg('base_recognizer; _filter; x.type', x.type())
-            print_dbg('base_recognizer; _filter; x.requires_grad', x.requires_grad)
-            print_dbg('base_recognizer; _filter; x.grad_fn', x.grad_fn)
-            print_dbg('base_recognizer; _filter; mask.type', mask.type())
-            out = x[mask]
-            # out.requires_grad = True
-            print_dbg('base_recognizer; _filter; x is not None and is not tuple or list')
-            # print_dbg('mask', mask)
-            print_dbg('base_recognizer; _filter; mask.grad_fn', mask.grad_fn)
-            # print_dbg('x[mask].cput().detach().numpy()', x[mask].cpu().detach().numpy())
-            print_dbg('base_recognizer; _filter; x[mask].grad_fn', x[mask].grad_fn)
-            print_dbg('base_recognizer; _filter; x[mask].device', x[mask].device)
-            print_dbg('base_recognizer; _filter; out.type()', out.type())
-        return out
+            return x[mask]
 
     def forward_train(self, imgs, labels, dataset_id=None, attention_mask=None, **kwargs):
-        print_dbg("Recognizer")
         imgs, attention_mask, head_args = self.reshape_input(imgs, attention_mask)
+
+        # print(imgs.size())
+        # assert False
+
         losses = dict()
 
         features = self._forward_module_train(
@@ -284,10 +267,6 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             heads = self.cls_head if self.multi_head else [self.cls_head]
             for head_id, cl_head in enumerate(heads):
                 trg_mask = (dataset_id == head_id).view(-1) if dataset_id is not None else None
-                print("base_recognizer; forward_train; base.forward_train; trg_mask")
-                print('base_recognizer; forward_train; requires grad: ', trg_mask.requires_grad)
-                print('base_recognizer; forward_train; type', type(trg_mask))
-                print('base_recognizer; forward_train; size', trg_mask.size())
 
                 trg_labels = self._filter(labels.view(-1), trg_mask)
                 trg_num_samples = trg_labels.numel()
@@ -296,16 +275,11 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
                 if self.with_self_challenging:
                     trg_features = self._filter(features, trg_mask)
-                    print_dbg('base_recognizer; forward_train; trg_features.requires grad: ', trg_features.requires_grad)
-                    print_dbg('base_recognizer; forward_train; trg_features.type', type(trg_features))
-                    print_dbg('base_recognizer; forward_train; trg_features.size', trg_features.size())
                     trg_main_scores, _, _ = self._infer_head(
                         cl_head,
                         *([trg_features] + head_args),
                         labels=trg_labels.view(-1)
                     )
-
-                    print_dbg('NNCF is enabled: ', is_in_nncf_tracing())
 
                     # TODO: Find permanent solution that will replace RSC for NNCF
                     if enable_rsc:
@@ -329,6 +303,19 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                         labels=labels.view(-1),
                         return_extra_data=True
                     )
+
+                    trg_main_scores = self._filter(all_main_scores, trg_mask)
+                    trg_extra_scores = self._filter(all_extra_scores, trg_mask)
+                    trg_norm_embd = self._filter(all_norm_embd, trg_mask)
+
+                # main head loss
+                losses.update(cl_head.loss(
+                    main_cls_score=trg_main_scores,
+                    extra_cls_score=trg_extra_scores,
+                    labels=trg_labels.view(-1),
+                    norm_embd=trg_norm_embd,
+                    name=str(head_id)
+                ))
 
                 # clip mixing loss
                 if self.with_clip_mixing:
