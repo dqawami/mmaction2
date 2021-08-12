@@ -182,9 +182,9 @@ def main(args):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Test model deployed to ONNX or OpenVINO')
+    parser = argparse.ArgumentParser(description='Test model deployed to OpenVINO')
     parser.add_argument('config', help='path to configuration file')
-    parser.add_argument('model', help='path to onnx model file or xml file in case of OpenVINO.')
+    parser.add_argument('model', help='path to xml file in case of OpenVINO.')
     parser.add_argument('--data_dir', type=str,
                         help='the dir with dataset')
     parser.add_argument('--eval', type=str, nargs='+',
