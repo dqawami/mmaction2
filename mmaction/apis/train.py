@@ -47,7 +47,6 @@ def train_model(model,
         dist=distributed,
         seed=cfg.seed)
     dataloader_setting = dict(dataloader_setting, **cfg.data.get('train_dataloader', {}))
-    # TODO: Temporarily remove shuffling for dataloader
     data_loaders = [
         build_dataloader(ds, **dataloader_setting) for ds in dataset
     ]
@@ -62,14 +61,13 @@ def train_model(model,
                         strict=False,
                         logger=logger,
                         show_converted=True,
-                        ignore_prefixes=ignore_prefixes,
+                        ignore_prefixes=ignore_prefixes, 
                         ignore_suffixes=ignore_suffixes)
-
+                    
     if torch.cuda.is_available():
         model = model.cuda()
 
     nncf_enable_compression = bool(cfg.get('nncf_config'))
-    print('apis/train; train_model; data_loaders[0]', str(data_loaders[0]))
     if nncf_enable_compression:
         compression_ctrl, model = wrap_nncf_model(model, cfg, data_loaders[0], get_fake_input)
     else:

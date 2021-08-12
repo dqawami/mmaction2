@@ -12,7 +12,6 @@ from mmcv.runner import auto_fp16
 from .. import builder
 from ...core.ops import rsc, NormRegularizer, balance_losses
 from ...integration.nncf import is_in_nncf_tracing, no_nncf_trace
-from ...integration.nncf.compression import print_dbg
 
 
 class EvalModeSetter:
@@ -236,10 +235,6 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
     def forward_train(self, imgs, labels, dataset_id=None, attention_mask=None, **kwargs):
         imgs, attention_mask, head_args = self.reshape_input(imgs, attention_mask)
-
-        # print(imgs.size())
-        # assert False
-
         losses = dict()
 
         features = self._forward_module_train(
@@ -386,8 +381,6 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         if self.multi_head:
             raise NotImplementedError('Inference does not support multi-head architectures')
-
-        print_dbg('forward inference; input img size', imgs.shape)
 
         imgs, _, head_args = self.reshape_input_inference(imgs)
         y = self._extract_features_test(imgs)

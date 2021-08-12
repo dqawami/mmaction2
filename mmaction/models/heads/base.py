@@ -5,7 +5,6 @@ import torch.nn as nn
 
 from ...core import top_k_accuracy
 from ..builder import build_loss
-from ...integration.nncf.compression import print_dbg
 
 
 class AvgConsensus(nn.Module):
@@ -69,7 +68,6 @@ class BaseHead(nn.Module, metaclass=ABCMeta):
             self.num_classes = max(class_sizes.keys()) + 1
 
         loss_cls = loss_cls if loss_cls is not None else dict(type='CrossEntropyLoss')
-        print_dbg('head/base/init/ loss_cls', loss_cls)
         self.head_loss = build_loss(loss_cls, class_sizes=class_sizes)
 
         self.losses_extra = None

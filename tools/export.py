@@ -30,7 +30,6 @@ def convert_to_onnx(net, input_size, output_file_path, opset, check=True):
                     'output': {0: 'batch_size', 1: 'scores'}}
 
     net = net.cpu()
-    # dummy_input = dummy_input.cuda()
 
     with torch.no_grad():
         torch.onnx.export(

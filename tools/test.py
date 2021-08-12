@@ -170,7 +170,6 @@ def main():
         if torch.cuda.is_available():
             model = model.cuda()
         _, model = wrap_nncf_model(model, cfg, None, get_fake_input)
-        # checkpoint = torch.load(args.checkpoint, map_location=None)
     else:
         fp16_cfg = cfg.get('fp16', None)
         if fp16_cfg is not None:
