@@ -54,7 +54,10 @@ def print_statistics(stats, logger):
     except ImportError:
         texttable_imported = False
 
+    # nncf 2.0.0
     for key, val in stats:
+    # nncf 1.7.1
+    # for key, val in stats.items():
         if texttable_imported and isinstance(val, Texttable):
             logger.info(key)
             logger.info(val.draw())

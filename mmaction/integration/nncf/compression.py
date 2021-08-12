@@ -18,10 +18,16 @@ def print_dbg(*args, **kwargs):
 
 if is_nncf_enabled():
     try:
+        # v2.0.0
         from nncf.torch.initialization import DefaultInitializingDataLoader
         from nncf.torch.nncf_network import NNCFNetwork
-
+        
         class_InitializingDataLoader = DefaultInitializingDataLoader
+        # v1.7.1
+        # from nncf.initialization import InitializingDataLoader
+        # from nncf.nncf_network import NNCFNetwork
+
+        # class_InitializingDataLoader = InitializingDataLoader
     except ImportError:
         raise RuntimeError(
             'Cannot import the standard functions of NNCF library '
@@ -35,24 +41,9 @@ else:
     class_InitializingDataLoader = DummyInitializingDataLoader
 
 
-# Expects MMDetection data (list of list of images, augmented batch)
-# TODO: Either do nothing or do v.data without [0]
 class MMInitializeDataLoader(class_InitializingDataLoader):
     def get_inputs(self, dataloader_output):
-        # print_dbg(len(dataloader_output), flush=True)
-        # print_dbg(dataloader_output.items(), flush=True)
-        # print_dbg(dataloader_output, flush=True)
-        # assert False
-        # redefined InitializingDataLoader because
-        # of DataContainer format in mmdet
-        # kwargs = {k: v.data[0] for k, v in dataloader_output.items()}
-        # kwargs = {k: v.data for k, v in dataloader_output.items()}
-        # args = (dataloader_output['imgs'], dataloader_output.get('label'))
-        # print_dbg('get_inputs; dataloader_output.keys()', dataloader_output.keys(), flush=True)
-        # print_dbg('get_inputs; datatloader_output[dataset_id]', dataloader_output.get('dataset_id'), flush=True)
-        # assert False
         return (), dataloader_output
-        # return args, {}
 
 
 def get_nncf_metadata():
@@ -133,11 +124,17 @@ def wrap_nncf_model(model,
 
     check_nncf_is_enabled()
 
+    # v2.0.0
     from nncf.config import NNCFConfig
     from nncf.torch import (create_compressed_model,
                             register_default_init_args)
     from nncf.torch.dynamic_graph.io_handling import nncf_model_input
     from nncf.torch.dynamic_graph.trace_tensor import TracedTensor
+    # v1.7.1
+    # from nncf import (NNCFConfig, create_compressed_model,
+    #                   register_default_init_args)
+    # from nncf.dynamic_graph.io_handling import nncf_model_input
+    # from nncf.dynamic_graph.trace_tensor import TracedTensor
 
     pathlib.Path(cfg.work_dir).mkdir(parents=True, exist_ok=True)
     nncf_config = NNCFConfig(cfg.nncf_config)
@@ -196,9 +193,7 @@ def wrap_nncf_model(model,
         assert get_fake_input_func is not None
         assert len(input_size) == 4 and input_size[0] == 1
         H, W, C = input_size[2], input_size[3], input_size[1]
-        # print('compression; model.parameters:', next(model.parameters()))
         device = next(model.parameters()).device
-        # print('compression; device:', device)
         with no_nncf_trace():
             return get_fake_input_func(cfg, orig_img_shape=tuple([H, W, C]), device=device)
 
@@ -206,8 +201,6 @@ def wrap_nncf_model(model,
         fake_data = _get_fake_data_for_forward(cfg, nncf_config, get_fake_input_func)
         img = fake_data["imgs"]
         img = nncf_model_input(img)
-        # print('Model type:', type(model), flush=True)
-        # assert False
         print_dbg("dummy_forward; img size", img.size())
         if export:
             img, _, _ = model.reshape_input(imgs=img)
@@ -241,15 +234,9 @@ def wrap_nncf_model(model,
             if not isinstance(img, TracedTensor):
                 img = nncf_model_input(img)
         kwargs['imgs'] = img
-        # print_dbg(kwargs)
-        # print_dbg(kwargs.keys(), flush=True)
         return args, kwargs
 
     model.dummy_forward_fn = dummy_forward
-    # export_method = type(model).export
-
-    # print('NNCF Config')
-    # print(nncf_config)
 
     if 'log_dir' in nncf_config:
         os.makedirs(nncf_config['log_dir'], exist_ok=True)
@@ -257,11 +244,7 @@ def wrap_nncf_model(model,
                                                       nncf_config,
                                                       dummy_forward_fn=dummy_forward,
                                                       wrap_inputs_fn=wrap_inputs,
-                                                      resuming_state_dict=resuming_state_dict)
-
-    # print('Returned compressed model')
-
-    # model.export = export_method.__get__(model)
+                                                      compression_state=resuming_state_dict)
 
     return compression_ctrl, model
 

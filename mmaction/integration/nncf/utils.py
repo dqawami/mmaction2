@@ -33,10 +33,16 @@ def get_nncf_version():
 
 if is_nncf_enabled():
     try:
+        # v2.0.0
         from nncf.torch.checkpoint_loading import load_state
         from nncf.torch.dynamic_graph.context import get_current_context
         from nncf.torch.dynamic_graph.context import \
             no_nncf_trace as original_no_nncf_trace
+        # v1.7.1
+        # from nncf import load_state
+        # from nncf.dynamic_graph.context import get_current_context
+        # from nncf.dynamic_graph.context import \
+        #     no_nncf_trace as original_no_nncf_trace
     except ImportError:
         raise RuntimeError(
             'Cannot import the standard functions of NNCF library '
