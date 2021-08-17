@@ -31,19 +31,6 @@ def get_nncf_version():
     return nncf.__version__
 
 
-if is_nncf_enabled():
-    try:
-        from nncf.torch.checkpoint_loading import load_state
-        from nncf.torch.dynamic_graph.context import get_current_context
-        from nncf.torch.dynamic_graph.context import \
-            no_nncf_trace as original_no_nncf_trace
-    except ImportError:
-        raise RuntimeError(
-            'Cannot import the standard functions of NNCF library '
-            '-- most probably, incompatible version of NNCF. '
-            'Please, use NNCF version pointed in the documentation.')
-
-
 def load_checkpoint(model, filename, map_location=None, strict=False):
     """Load checkpoint from a file or URI.
 
@@ -57,6 +44,8 @@ def load_checkpoint(model, filename, map_location=None, strict=False):
     Returns:
         dict or OrderedDict: The loaded checkpoint.
     """
+    from nncf.torch.checkpoint_loading import load_state
+
     checkpoint = torch.load(filename, map_location=map_location)
     # get state_dict from checkpoint
     if isinstance(checkpoint, OrderedDict):
@@ -84,6 +73,8 @@ def no_nncf_trace():
     """
 
     if is_nncf_enabled():
+        from nncf.torch.dynamic_graph.context import \
+            no_nncf_trace as original_no_nncf_trace
         return original_no_nncf_trace()
     return nullcontext()
 
@@ -91,6 +82,8 @@ def no_nncf_trace():
 def is_in_nncf_tracing():
     if not is_nncf_enabled():
         return False
+
+    from nncf.torch.dynamic_graph.context import get_current_context
 
     ctx = get_current_context()
 

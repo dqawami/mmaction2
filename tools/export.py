@@ -165,9 +165,6 @@ def main(args):
     if cfg.get('nncf_config'):
         if torch.cuda.is_available():
             model.cuda()
-        alt_ssd_export = getattr(args, 'alt_ssd_export', False)
-        assert not alt_ssd_export, \
-                'Export of NNCF-compressed model is incompatible with --alt_ssd_export'
         check_nncf_is_enabled()
         cfg.load_from = args.checkpoint
         cfg.resume_from = None

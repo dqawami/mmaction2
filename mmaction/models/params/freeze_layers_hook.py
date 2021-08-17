@@ -41,7 +41,6 @@ class FreezeLayers(Hook):
             if any([open_substring in name for open_substring in open_layers]):
                 module.train()
                 for p in module.parameters():
-
                     p.requires_grad = True
             else:
                 module.eval()

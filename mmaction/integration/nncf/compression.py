@@ -10,35 +10,6 @@ from mmaction.utils import get_root_logger
 from .utils import (check_nncf_is_enabled, get_nncf_version, is_nncf_enabled,
                     load_checkpoint, no_nncf_trace)
 
-SHOULD_DBG = False
-
-def print_dbg(*args, **kwargs):
-    if SHOULD_DBG:
-        print(*args, **kwargs)
-
-if is_nncf_enabled():
-    try:
-        from nncf.torch.initialization import DefaultInitializingDataLoader
-        from nncf.torch.nncf_network import NNCFNetwork
-        
-        class_InitializingDataLoader = DefaultInitializingDataLoader
-    except ImportError:
-        raise RuntimeError(
-            'Cannot import the standard functions of NNCF library '
-            '-- most probably, incompatible version of NNCF. '
-            'Please, use NNCF version pointed in the documentation.')
-else:
-    class DummyInitializingDataLoader:
-        pass
-
-
-    class_InitializingDataLoader = DummyInitializingDataLoader
-
-
-class MMInitializeDataLoader(class_InitializingDataLoader):
-    def get_inputs(self, dataloader_output):
-        return (), dataloader_output
-
 
 def get_nncf_metadata():
     """
@@ -56,13 +27,13 @@ def is_checkpoint_nncf(path):
     checkpoint was the result of trainning of NNCF-compressed model.
     See the function get_nncf_metadata above.
     """
-    try:
-        checkpoint = torch.load(path, map_location='cpu')
-        meta = checkpoint.get('meta', {})
-        nncf_enable_compression = meta.get('nncf_enable_compression', False)
-        return bool(nncf_enable_compression)
-    except FileNotFoundError:
+    if not os.path.exists(path):
         return False
+    checkpoint = torch.load(path, map_location='cpu')
+    meta = checkpoint.get('meta', {})        
+    nncf_enable_compression = meta.get('nncf_enable_compression', False)
+    return bool(nncf_enable_compression)
+
 
 def get_nncf_config_from_meta(path):
     """
@@ -111,7 +82,7 @@ def wrap_nncf_model(model,
                     get_fake_input_func=None,
                     export=False):
     """
-    The function wraps mmdet model by NNCF
+    The function wraps mmaction model by NNCF
     Note that the parameter `get_fake_input_func` should be the function `get_fake_input`
     -- cannot import this function here explicitly
     """
@@ -123,6 +94,11 @@ def wrap_nncf_model(model,
                             register_default_init_args)
     from nncf.torch.dynamic_graph.io_handling import nncf_model_input
     from nncf.torch.dynamic_graph.trace_tensor import TracedTensor
+    from nncf.torch.initialization import DefaultInitializingDataLoader
+
+    class MMInitializeDataLoader(DefaultInitializingDataLoader):
+        def get_inputs(self, dataloader_output):
+            return (), dataloader_output
 
     pathlib.Path(cfg.work_dir).mkdir(parents=True, exist_ok=True)
     nncf_config = NNCFConfig(cfg.nncf_config)
@@ -189,7 +165,6 @@ def wrap_nncf_model(model,
         fake_data = _get_fake_data_for_forward(cfg, nncf_config, get_fake_input_func)
         img = fake_data["imgs"]
         img = nncf_model_input(img)
-        print_dbg("dummy_forward; img size", img.size())
         if export:
             img, _, _ = model.reshape_input(imgs=img)
             model(imgs=img)
@@ -208,8 +183,6 @@ def wrap_nncf_model(model,
             return args, kwargs
 
         # during model's forward
-        print_dbg('compression; wrap_inputs; len(args)', len(args))
-        print_dbg('compression; wrap_inputs; kwargs.keys()', kwargs.keys(), flush=True)
         assert 'imgs' in kwargs, 'During model forward imgs must be in kwargs'
         img = kwargs['imgs']
         if isinstance(img, list):
@@ -249,7 +222,6 @@ def change_export_func_first_conv(model):
         from nncf.utils import no_jit_trace
         with no_jit_trace():
             input_range = abs(self.scale) + self.eps
-            # todo: take bias into account during input_low/input_high calculation
             input_low = input_range * self.level_low / self.level_high
             input_high = input_range
 
@@ -283,6 +255,7 @@ def change_export_func_first_conv(model):
 def get_uncompressed_model(module):
     if not is_nncf_enabled():
         return module
+    from nncf.torch.nncf_network import NNCFNetwork
     if isinstance(module, NNCFNetwork):
         return module.get_nncf_wrapped_model()
     return module

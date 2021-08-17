@@ -61,7 +61,7 @@ def train_model(model,
                         strict=False,
                         logger=logger,
                         show_converted=True,
-                        ignore_prefixes=ignore_prefixes, 
+                        ignore_prefixes=ignore_prefixes,
                         ignore_suffixes=ignore_suffixes)
                     
     if torch.cuda.is_available():

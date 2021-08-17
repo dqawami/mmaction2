@@ -12,6 +12,7 @@ from ..registry import BACKBONES
 from ..losses import TotalVarianceLoss
 from .mobilenetv3 import make_divisible, MobileNetV3
 
+
 class SELayer_3D(nn.Module):
     def __init__(self, in_channels, reduction=4, reduce_temporal=False, norm='none'):
         super(SELayer_3D, self).__init__()
