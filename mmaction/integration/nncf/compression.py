@@ -69,7 +69,6 @@ def get_nncf_config_from_meta(path):
             'find_unused_parameters': True
             }
     if nncf_config_part['nncf_config'].get('log_dir'):
-        # TODO(LeonidBeynenson): improve work with log dir
         log_dir = tempfile.mkdtemp(prefix='nncf_output_')
         nncf_config_part['nncf_config']['log_dir'] = log_dir
 
