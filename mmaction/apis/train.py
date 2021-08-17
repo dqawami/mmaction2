@@ -65,7 +65,7 @@ def train_model(model,
                         ignore_suffixes=ignore_suffixes)
                     
     if torch.cuda.is_available():
-        model = model.cuda()
+        model = model.cuda() if distributed else model.cuda(cfg.gpu_ids[0])
 
     nncf_enable_compression = bool(cfg.get('nncf_config'))
     if nncf_enable_compression:
@@ -79,14 +79,14 @@ def train_model(model,
         # Sets the `find_unused_parameters` parameter in
         # torch.nn.parallel.DistributedDataParallel
         model = MMDistributedDataParallel(
-            model.cuda(),
+            model,
             device_ids=[torch.cuda.current_device()],
             broadcast_buffers=False,
             find_unused_parameters=find_unused_parameters
         )
     else:
         model = MMDataParallel(
-            model.cuda(cfg.gpu_ids[0]), device_ids=cfg.gpu_ids
+            model, device_ids=cfg.gpu_ids
         )
 
     if nncf_enable_compression and distributed:
