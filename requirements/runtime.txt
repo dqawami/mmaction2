@@ -7,4 +7,3 @@ Pillow
 terminaltables
 tensorboard
 tqdm
-nncf==2.0.0
